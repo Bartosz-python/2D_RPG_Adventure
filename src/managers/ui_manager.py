@@ -6,7 +6,7 @@ import pygame
 from src.config.settings import *
 
 class UIManager:
-    def __init__(self, map_manager):
+    def __init__(self, map_manager, screen_width=None, screen_height=None, is_fullscreen=False):
         # Accept map_manager but also need asset_manager for compatibility
         self.map_manager = map_manager
         self.asset_manager = map_manager.asset_manager if hasattr(map_manager, 'asset_manager') else None
@@ -14,42 +14,97 @@ class UIManager:
         self.font = pygame.font.Font(None, 24)
         self.small_font = pygame.font.Font(None, 18)
         
+        # Screen dimensions (use provided or fallback to settings)
+        self.screen_width = screen_width if screen_width else SCREEN_WIDTH
+        self.screen_height = screen_height if screen_height else SCREEN_HEIGHT
+        self.is_fullscreen = is_fullscreen
+        
         # Slot size (define first, used in position calculations)
         self.slot_size = 50
         self.slot_padding = 5
         
-        # UI element positions (centered and fully visible with padding)
-        padding = 70  # Safe padding from screen edges
+        # Title bar settings
+        self.title_bar_height = 35
+        self.title_bar_button_size = 30
+        self.title_bar_button_padding = 5
+        self.title_bar_buttons = {}  # Will store button rects
         
-        # Top-left corner: Inventory (centered horizontally in left quarter)
+        # Calculate UI positions based on screen mode
+        self._calculate_positions()
+    
+    def _calculate_positions(self):
+        """Calculate UI element positions based on screen mode (fullscreen or windowed)"""
+        if self.is_fullscreen:
+            self._calculate_positions_fullscreen()
+        else:
+            self._calculate_positions_windowed()
+    
+    def _calculate_positions_fullscreen(self):
+        """Calculate UI positions for fullscreen mode - more spread out"""
+        padding = 80
+        title_bar_offset = self.title_bar_height + 10
+        
+        # Top-left: Day counter (absolute position)
+        self.day_counter_pos = (padding, title_bar_offset + padding)
+        
+        # Top-left: Inventory (below day counter, absolute position)
         inventory_bar_width = (self.slot_size + self.slot_padding) * VISIBLE_SLOTS - self.slot_padding
-        inventory_x = padding + (SCREEN_WIDTH // 4 - inventory_bar_width)
-        self.inventory_pos = (inventory_x, padding)
+        self.inventory_pos = (padding, title_bar_offset + padding + 60)
         
-        # HP bar below inventory (centered with inventory)
+        # Top-left: HP bar (below inventory, absolute position)
         hp_bar_width = 350
-        hp_bar_x = inventory_x + (inventory_bar_width - hp_bar_width) // 2
-        self.hp_bar_pos = (hp_bar_x, padding + 90)  # Below inventory
+        inventory_x, inventory_y = self.inventory_pos
+        self.hp_bar_pos = (inventory_x, inventory_y + 70)
         
-        # Top-right corner: Exit button
-        exit_btn_size = 40
-        self.exit_button_pos = (SCREEN_WIDTH - exit_btn_size - padding, padding)
-        self.exit_button_rect = None
-        
-        # Top-left corner: Day counter (moved to left side for full visibility)
-        day_counter_width = 150
-        self.day_counter_pos = (padding + 1550, padding)
-        
-        # Bottom-center: Stats and Equipment (centered, properly spaced)
+        # Bottom-center: Equipment (absolute position from bottom)
         equipment_bar_width = (self.slot_size + self.slot_padding) * 7 - self.slot_padding
-        equipment_x = SCREEN_WIDTH // 2 - equipment_bar_width // 2
+        equipment_x = self.screen_width // 2 - equipment_bar_width // 2
         bottom_margin = padding
-        self.equipment_pos = (equipment_x, SCREEN_HEIGHT - bottom_margin - self.slot_size - 30)
+        self.equipment_pos = (equipment_x, self.screen_height - bottom_margin - self.slot_size - 30)
         
-        # Stats above equipment bar (centered)
+        # Bottom-center: Stats (above equipment, absolute position)
         stats_width = 500
-        stats_x = SCREEN_WIDTH // 2 - stats_width // 2
-        self.stats_pos = (stats_x, SCREEN_HEIGHT - bottom_margin - self.slot_size - 75)
+        stats_x = self.screen_width // 2 - stats_width // 2
+        equipment_y = self.equipment_pos[1]
+        self.stats_pos = (stats_x, equipment_y - 40)
+    
+    def _calculate_positions_windowed(self):
+        """Calculate UI positions for windowed mode - compact, no overlap"""
+        padding = 10
+        title_bar_offset = self.title_bar_height + 5
+        
+        # Top-left: Day counter (absolute position, very compact)
+        self.day_counter_pos = (padding, title_bar_offset + padding)
+        
+        # Top-left: Inventory (below day counter, compact)
+        inventory_bar_width = (self.slot_size + self.slot_padding) * VISIBLE_SLOTS - self.slot_padding
+        day_counter_y = self.day_counter_pos[1]
+        self.inventory_pos = (padding, day_counter_y + 55)
+        
+        # Top-left: HP bar (below inventory, compact)
+        hp_bar_width = 300  # Smaller for windowed mode
+        inventory_x, inventory_y = self.inventory_pos
+        self.hp_bar_pos = (inventory_x, inventory_y + 80)
+        
+        # Bottom-center: Equipment (absolute position from bottom, compact)
+        equipment_bar_width = (self.slot_size + self.slot_padding) * 7 - self.slot_padding
+        equipment_x = self.screen_width // 2 - equipment_bar_width // 2
+        bottom_margin = padding
+        self.equipment_pos = (equipment_x, self.screen_height - bottom_margin - self.slot_size - 25)
+        
+        # Bottom-center: Stats (above equipment, compact)
+        stats_width = 400  # Smaller for windowed mode
+        stats_x = self.screen_width // 2 - stats_width // 2
+        equipment_y = self.equipment_pos[1]
+        self.stats_pos = (stats_x, equipment_y - 35)
+    
+    def update_screen_size(self, width, height, is_fullscreen=None):
+        """Update screen dimensions and recalculate positions"""
+        self.screen_width = width
+        self.screen_height = height
+        if is_fullscreen is not None:
+            self.is_fullscreen = is_fullscreen
+        self._calculate_positions()
         
         # Title bar settings
         self.title_bar_height = 35
@@ -65,7 +120,6 @@ class UIManager:
         self.render_equipment(screen, player)
         self.render_stats(screen, player)
         self.render_day_counter(screen, day_night_manager)
-        self.render_exit_button(screen)
         
         # Render active menu if any
         if self.active_menu:
@@ -78,43 +132,39 @@ class UIManager:
         # Calculate centered position for slots
         inventory_bar_width = (self.slot_size + self.slot_padding) * VISIBLE_SLOTS - self.slot_padding
         panel_width = inventory_bar_width + 20
-        panel_height = 65
-        panel_rect = pygame.Rect(x - 10, y - 5, panel_width, panel_height)
+        panel_height = 70  # Reduced since no title
+        panel_x = x - 10
+        panel_y = y - 5
+        panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
         panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
         # Gradient background
         for py in range(panel_height):
             alpha = int(220 - (py / panel_height) * 20)
             pygame.draw.line(panel_surface, (50, 50, 60, alpha), (0, py), (panel_width, py))
-        screen.blit(panel_surface, (x - 10, y - 5))
+        screen.blit(panel_surface, (panel_x, panel_y))
         pygame.draw.rect(screen, (120, 120, 140), panel_rect, 2)
         # Inner highlight
-        pygame.draw.line(screen, (80, 80, 100, 100), (x - 8, y - 3), (x + panel_width - 12, y - 3), 1)
+        pygame.draw.line(screen, (80, 80, 100, 100), (panel_x + 2, panel_y + 2), (panel_x + panel_width - 2, panel_y + 2), 1)
         
-        # Calculate centered slots position
-        slots_start_x = x + (panel_width - inventory_bar_width) // 2
+        # Calculate centered slots position relative to panel
+        slots_start_x = panel_x + (panel_width - inventory_bar_width) // 2
         
-        # Title (centered)
-        title = self.small_font.render("Inventory", True, WHITE)
-        title_x = x + (panel_width - title.get_width()) // 2
-        screen.blit(title, (title_x, y))
-        
-        y += 25
-        
-        # Draw slots (centered)
+        # Draw slots (centered in panel)
         visible_items = player.inventory.get_visible_items()
+        slot_y = panel_y + (panel_height - self.slot_size) // 2  # Center slots vertically in panel
         for i, (item, count) in enumerate(visible_items):
             slot_x = slots_start_x + (self.slot_size + self.slot_padding) * i
             
             # Draw slot background with depth
-            slot_rect = pygame.Rect(slot_x, y, self.slot_size, self.slot_size)
+            slot_rect = pygame.Rect(slot_x, slot_y, self.slot_size, self.slot_size)
             # Slot shadow
-            shadow_rect = pygame.Rect(slot_x + 2, y + 2, self.slot_size, self.slot_size)
+            shadow_rect = pygame.Rect(slot_x + 2, slot_y + 2, self.slot_size, self.slot_size)
             pygame.draw.rect(screen, (20, 20, 20), shadow_rect)
             # Main slot
             pygame.draw.rect(screen, (60, 60, 70), slot_rect)
             # Highlight
-            pygame.draw.line(screen, (100, 100, 110), (slot_x, y), (slot_x + self.slot_size - 1, y), 1)
-            pygame.draw.line(screen, (100, 100, 110), (slot_x, y), (slot_x, y + self.slot_size - 1), 1)
+            pygame.draw.line(screen, (100, 100, 110), (slot_x, slot_y), (slot_x + self.slot_size - 1, slot_y), 1)
+            pygame.draw.line(screen, (100, 100, 110), (slot_x, slot_y), (slot_x, slot_y + self.slot_size - 1), 1)
             # Border
             pygame.draw.rect(screen, (150, 150, 160), slot_rect, 2)
             
@@ -122,36 +172,41 @@ class UIManager:
             if item:
                 # Placeholder item rendering
                 item_color = self._get_item_color(item)
-                item_rect = pygame.Rect(slot_x + 5, y + 5, self.slot_size - 10, self.slot_size - 10)
+                item_rect = pygame.Rect(slot_x + 5, slot_y + 5, self.slot_size - 10, self.slot_size - 10)
                 pygame.draw.rect(screen, item_color, item_rect)
                 
                 # Draw count
                 count_text = self.small_font.render(str(count), True, WHITE)
-                screen.blit(count_text, (slot_x + self.slot_size - 20, y + self.slot_size - 20))
+                screen.blit(count_text, (slot_x + self.slot_size - 20, slot_y + self.slot_size - 20))
         
         # Show "Inventory Full" message if needed (centered)
         if player.inventory.is_full():
             msg = self.small_font.render("INVENTORY FULL", True, RED)
             msg_x = x + (panel_width - msg.get_width()) // 2
-            screen.blit(msg, (msg_x, y + self.slot_size + 10))
+            screen.blit(msg, (msg_x, slot_y + self.slot_size + 10))
     
     def render_hp_bar(self, screen, player):
         """Render player HP bar with gold on the right (according to readme)"""
         x, y = self.hp_bar_pos
-        bar_width = 300
-        bar_height = 28
+        bar_height = 20
+        
+        # Use same panel width as inventory
+        inventory_bar_width = (self.slot_size + self.slot_padding) * VISIBLE_SLOTS - self.slot_padding
+        panel_width = inventory_bar_width + 20
         
         # Gold text width (to position it on the right end of HP bar)
         gold_text = self.small_font.render(f"Gold: {player.gold}", True, YELLOW)
         gold_width = gold_text.get_width() + 15
         
-        # Total panel width (HP bar + gold spacing)
-        total_width = bar_width + gold_width + 20
-        panel_rect = pygame.Rect(x - 10, y - 5, total_width, bar_height + 10)
-        panel_surface = pygame.Surface((total_width, bar_height + 10), pygame.SRCALPHA)
+        # Calculate HP bar width to fill remaining space (panel width - gold width - padding)
+        bar_width = panel_width - gold_width - 30  # 30 = padding on both sides
+        
+        # Panel background (same width as inventory)
+        panel_rect = pygame.Rect(x - 10, y - 5, panel_width, bar_height + 10)
+        panel_surface = pygame.Surface((panel_width, bar_height + 10), pygame.SRCALPHA)
         for py in range(bar_height + 10):
             alpha = int(220 - (py / (bar_height + 10)) * 20)
-            pygame.draw.line(panel_surface, (50, 50, 60, alpha), (0, py), (total_width, py))
+            pygame.draw.line(panel_surface, (50, 50, 60, alpha), (0, py), (panel_width, py))
         screen.blit(panel_surface, (x - 10, y - 5))
         pygame.draw.rect(screen, (120, 120, 140), panel_rect, 2)
         
@@ -168,26 +223,26 @@ class UIManager:
         
         # HP Text (left side)
         hp_text = self.small_font.render(f"HP: {player.hp}/{player.max_hp}", True, WHITE)
-        screen.blit(hp_text, (x + 5, y + 6))
+        screen.blit(hp_text, (x + 5, y + 4))
         
-        # Gold text (right end of HP bar, according to readme)
+        # Gold text (right end of panel, aligned with inventory width)
         gold_x = x + bar_width + 10
-        screen.blit(gold_text, (gold_x, y + 6))
+        screen.blit(gold_text, (gold_x, y + 4))
     
     def render_title_bar(self, screen):
         """Render title bar with window controls at the top"""
         # Title bar background
-        title_bar_rect = pygame.Rect(0, 0, SCREEN_WIDTH, self.title_bar_height)
+        title_bar_rect = pygame.Rect(0, 0, self.screen_width, self.title_bar_height)
         pygame.draw.rect(screen, (40, 40, 50), title_bar_rect)
         pygame.draw.line(screen, (60, 60, 70), (0, self.title_bar_height - 1), 
-                        (SCREEN_WIDTH, self.title_bar_height - 1), 2)
+                        (self.screen_width, self.title_bar_height - 1), 2)
         
         # Title text
         title_text = self.small_font.render("Wild Eldoria", True, WHITE)
         screen.blit(title_text, (10, (self.title_bar_height - title_text.get_height()) // 2))
         
         # Window control buttons (minimize, maximize, close) on the right
-        button_x = SCREEN_WIDTH - (self.title_bar_button_size + self.title_bar_button_padding) * 3
+        button_x = self.screen_width - (self.title_bar_button_size + self.title_bar_button_padding) * 3
         button_y = (self.title_bar_height - self.title_bar_button_size) // 2
         
         # Minimize button
@@ -228,26 +283,6 @@ class UIManager:
                         (button_x + margin, button_y + self.title_bar_button_size - margin), 2)
         self.title_bar_buttons['close'] = close_rect
     
-    def render_exit_button(self, screen):
-        """Render exit/quit button in top-right corner"""
-        x, y = self.exit_button_pos
-        btn_size = 40
-        
-        # Button background
-        btn_rect = pygame.Rect(x, y, btn_size, btn_size)
-        pygame.draw.rect(screen, (200, 50, 50), btn_rect)
-        pygame.draw.rect(screen, (255, 100, 100), btn_rect, 2)
-        
-        # X symbol
-        margin = 10
-        pygame.draw.line(screen, WHITE, (x + margin, y + margin), 
-                        (x + btn_size - margin, y + btn_size - margin), 3)
-        pygame.draw.line(screen, WHITE, (x + btn_size - margin, y + margin), 
-                        (x + margin, y + btn_size - margin), 3)
-        
-        # Tooltip on hover would go here
-        self.exit_button_rect = btn_rect
-    
     def render_equipment(self, screen, player):
         """Render equipped items bar (centered at bottom)"""
         x, y = self.equipment_pos
@@ -257,7 +292,8 @@ class UIManager:
         equipment_bar_width = (self.slot_size + self.slot_padding) * num_slots - self.slot_padding
         panel_width = equipment_bar_width + 20
         panel_height = self.slot_size + 35
-        panel_x = x - 10
+        # Center panel on screen (x is already centered for slots, so adjust for panel)
+        panel_x = self.screen_width // 2 - panel_width // 2
         panel_y = y - 25
         panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
         panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
@@ -271,8 +307,8 @@ class UIManager:
         labels = ['Helmet', 'Chest', 'Legs', 'Boots', 'Cons.1', 'Cons.2', 'Weapon']
         slot_keys = ['helmet', 'chestplate', 'leggings', 'boots', 'consumable1', 'consumable2', 'weapon']
         
-        # Center slots within panel
-        slots_start_x = x + (panel_width - equipment_bar_width) // 2
+        # Center slots within panel (10px padding on each side)
+        slots_start_x = panel_x + 10
         
         for i, (label, key) in enumerate(zip(labels, slot_keys)):
             slot_x = slots_start_x + (self.slot_size + self.slot_padding) * i
@@ -308,7 +344,7 @@ class UIManager:
         )
         
         # Center the stats text properly
-        stats_x = SCREEN_WIDTH // 2 - stats_text.get_width() // 2
+        stats_x = self.screen_width // 2 - stats_text.get_width() // 2
         
         # Background panel
         panel_width = stats_text.get_width() + 20
@@ -349,7 +385,7 @@ class UIManager:
     def render_menu(self, screen, player):
         """Render building interaction menu"""
         # Create semi-transparent overlay
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay = pygame.Surface((self.screen_width, self.screen_height))
         overlay.set_alpha(200)
         overlay.fill(BLACK)
         screen.blit(overlay, (0, 0))
@@ -357,8 +393,8 @@ class UIManager:
         # Menu box (centered)
         menu_width = 600
         menu_height = 500
-        menu_x = SCREEN_WIDTH // 2 - menu_width // 2
-        menu_y = SCREEN_HEIGHT // 2 - menu_height // 2
+        menu_x = self.screen_width // 2 - menu_width // 2
+        menu_y = self.screen_height // 2 - menu_height // 2
         
         # Menu background with gradient
         menu_rect = pygame.Rect(menu_x, menu_y, menu_width, menu_height)
@@ -405,7 +441,7 @@ class UIManager:
             self._render_bedroom_menu(screen, menu_x, menu_y, player)
         
         # Close instruction at bottom
-        close_text = self.small_font.render("Press ESC or click X to close", True, LIGHT_GRAY)
+        close_text = self.small_font.render("Press ESC to close", True, LIGHT_GRAY)
         screen.blit(close_text, (menu_x + 20, menu_y + menu_height - 25))
     
     def _render_smith_menu(self, screen, x, y, player):

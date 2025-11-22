@@ -9,7 +9,7 @@ from src.systems.equipment import Equipment
 
 class Player:
     def __init__(self, x, y, asset_manager):
-        self.rect = pygame.Rect(x, y, TILE_SIZE, TILE_SIZE * 2)
+        self.rect = pygame.Rect(x, y, TILE_SIZE, TILE_SIZE)
         self.asset_manager = asset_manager
         
         # Physics

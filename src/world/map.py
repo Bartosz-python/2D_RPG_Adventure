@@ -122,9 +122,10 @@ class Map:
         bg_color_bottom = tuple(int(bg_color_bottom_day[i] * (1 - darkness_factor) + bg_color_bottom_night[i] * darkness_factor) for i in range(3))
         
         # Render background (sky gradient) - regenerate each frame to reflect day/night changes
-        self._bg_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        for y in range(SCREEN_HEIGHT):
-            ratio = y / SCREEN_HEIGHT
+        screen_width, screen_height = screen.get_size()
+        self._bg_surface = pygame.Surface((screen_width, screen_height))
+        for y in range(screen_height):
+            ratio = y / screen_height
             if ratio < 0.5:
                 # Top half: top to mid
                 local_ratio = ratio * 2
@@ -137,11 +138,14 @@ class Map:
                 r = int(bg_color_mid[0] * (1 - local_ratio) + bg_color_bottom[0] * local_ratio)
                 g = int(bg_color_mid[1] * (1 - local_ratio) + bg_color_bottom[1] * local_ratio)
                 b = int(bg_color_mid[2] * (1 - local_ratio) + bg_color_bottom[2] * local_ratio)
-            pygame.draw.line(self._bg_surface, (r, g, b), (0, y), (SCREEN_WIDTH, y))
+            pygame.draw.line(self._bg_surface, (r, g, b), (0, y), (screen_width, y))
         screen.blit(self._bg_surface, (0, 0))
         
         # Special rendering for main map: green ground block
         if self.map_type == MAP_MAIN:
+            # Get actual screen size
+            screen_width, screen_height = screen.get_size()
+            
             # Calculate ground position (where blocks start)
             ground_y = 25 * TILE_SIZE  # Top of ground blocks
             ground_screen_y = ground_y - camera_y
@@ -149,7 +153,7 @@ class Map:
             # Draw green ground block from ground_y to bottom of screen, full width
             # Always draw from top of screen if ground is above screen
             green_start_y = max(0, ground_screen_y)
-            green_height = SCREEN_HEIGHT - green_start_y
+            green_height = screen_height - green_start_y
             
             if green_height > 0:
                 # Green color with gradient for depth
@@ -166,15 +170,15 @@ class Map:
                     b = int(green_light[2] * (1 - ratio * 0.3) + green_base[2] * (ratio * 0.3))
                     pygame.draw.line(screen, (r, g, b), 
                                     (0, green_start_y + y_offset), 
-                                    (SCREEN_WIDTH, green_start_y + y_offset))
+                                    (screen_width, green_start_y + y_offset))
                 
                 # Add texture lines for grass effect at top
                 if ground_screen_y >= 0:
-                    for i in range(0, SCREEN_WIDTH, 20):
+                    for i in range(0, screen_width, 20):
                         pygame.draw.line(screen, green_dark, (i, ground_screen_y), (i, ground_screen_y + 5), 1)
                     
                     # Top border (grass line)
-                    pygame.draw.line(screen, green_light, (0, ground_screen_y), (SCREEN_WIDTH, ground_screen_y), 3)
+                    pygame.draw.line(screen, green_light, (0, ground_screen_y), (screen_width, ground_screen_y), 3)
         else:
             # Render blocks normally for other maps
             for block in self.blocks:

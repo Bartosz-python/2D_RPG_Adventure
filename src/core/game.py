@@ -23,16 +23,19 @@ class Game:
         self.map_manager = MapManager(self.asset_manager)
         self.day_night_manager = DayNightManager()
         self.quest_manager = QuestManager()
-        self.ui_manager = UIManager(self.map_manager)
+        # Pass screen dimensions to UI manager
+        screen_width, screen_height = screen.get_size()
+        # Check if in fullscreen mode (pygame doesn't have direct check, so we'll pass False initially)
+        self.ui_manager = UIManager(self.map_manager, screen_width, screen_height, is_fullscreen=False)
         
         # Load initial map first
         self.current_map = self.map_manager.load_map(MAP_MAIN)
         
         # Initialize player (position on ground after map is loaded)
-        # Ground is at y=25, player height is 2 tiles, so position at y=23
+        # Ground is at y=25, player height is 1 tile, so position at y=24
         # Start player at center of map
         start_x = (self.current_map.width * TILE_SIZE) // 2
-        start_y = 23 * TILE_SIZE
+        start_y = 24 * TILE_SIZE
         self.player = Player(start_x, start_y, self.asset_manager)
         
         # Start with tutorial (as per readme)
@@ -42,6 +45,10 @@ class Game:
         self.camera_x = 0
         self.camera_y = 0
     
+    def update_screen_size(self, width, height, is_fullscreen=False):
+        """Update screen size for UI and other components"""
+        self.ui_manager.update_screen_size(width, height, is_fullscreen)
+    
     def handle_event(self, event):
         """Handle pygame events"""
         current_state = self.state_manager.get_state()
@@ -49,20 +56,16 @@ class Game:
         # Handle mouse clicks
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left click
-                # Check title bar buttons first
+                # Check menu buttons first (menu has overlay, so it should be checked first)
+                if self.ui_manager.active_menu:
+                    menu_handled = self.ui_manager.handle_menu_click(event.pos, self.player)
+                    if menu_handled:
+                        return  # Menu handled the click, don't process other buttons
+                
+                # Check title bar buttons (includes close button)
                 title_bar_action = self.ui_manager.handle_title_bar_click(event.pos)
                 if title_bar_action:
                     return title_bar_action  # Return action to main loop
-                
-                # Check exit button
-                if hasattr(self.ui_manager, 'exit_button_rect') and self.ui_manager.exit_button_rect:
-                    if self.ui_manager.exit_button_rect.collidepoint(event.pos):
-                        self.running = False
-                        return 'quit'
-                
-                # Check menu buttons
-                if self.ui_manager.active_menu:
-                    self.ui_manager.handle_menu_click(event.pos, self.player)
         
         # Handle ESC key based on context
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
@@ -87,9 +90,9 @@ class Game:
                     self.player.equip_weapon('sword')
                     self.state_manager.set_state(STATE_MAIN_MAP)
                     # Position player at top edge of green block (center x, on ground level)
-                    # Ground is at y=25, player height is 2 tiles, so position at y=23
+                    # Ground is at y=25, player height is 1 tile, so position at y=24
                     self.player.rect.x = (self.current_map.width * TILE_SIZE) // 2
-                    self.player.rect.y = 23 * TILE_SIZE  # Top edge of green block
+                    self.player.rect.y = 24 * TILE_SIZE  # Top edge of green block
                     # Reset velocity to prevent issues
                     self.player.velocity_x = 0
                     self.player.velocity_y = 0
@@ -101,8 +104,10 @@ class Game:
                 self.handle_interaction(event)
         
         # Always pass input events to player when in gameplay (both KEYDOWN and KEYUP)
+        # But block input if menu is open
         if current_state in [STATE_MAIN_MAP, STATE_EXPLORATION]:
-            self.player.handle_input(event)
+            if not self.ui_manager.active_menu:
+                self.player.handle_input(event)
     
     def handle_weapon_selection(self, event):
         """Handle weapon selection after tutorial"""
@@ -110,9 +115,9 @@ class Game:
             self.player.equip_weapon('sword')
             self.state_manager.set_state(STATE_MAIN_MAP)
             # Position player at top edge of green block (center x, on ground level)
-            # Ground is at y=25, player height is 2 tiles, so position at y=23
+            # Ground is at y=25, player height is 1 tile, so position at y=24
             self.player.rect.x = (self.current_map.width * TILE_SIZE) // 2
-            self.player.rect.y = 23 * TILE_SIZE  # Top edge of green block
+            self.player.rect.y = 24 * TILE_SIZE  # Top edge of green block
             # Reset velocity to prevent issues
             self.player.velocity_x = 0
             self.player.velocity_y = 0
@@ -120,9 +125,9 @@ class Game:
             self.player.equip_weapon('wand')
             self.state_manager.set_state(STATE_MAIN_MAP)
             # Position player at top edge of green block (center x, on ground level)
-            # Ground is at y=25, player height is 2 tiles, so position at y=23
+            # Ground is at y=25, player height is 1 tile, so position at y=24
             self.player.rect.x = (self.current_map.width * TILE_SIZE) // 2
-            self.player.rect.y = 23 * TILE_SIZE  # Top edge of green block
+            self.player.rect.y = 24 * TILE_SIZE  # Top edge of green block
             # Reset velocity to prevent issues
             self.player.velocity_x = 0
             self.player.velocity_y = 0
@@ -130,9 +135,9 @@ class Game:
             self.player.equip_weapon('bow')
             self.state_manager.set_state(STATE_MAIN_MAP)
             # Position player at top edge of green block (center x, on ground level)
-            # Ground is at y=25, player height is 2 tiles, so position at y=23
+            # Ground is at y=25, player height is 1 tile, so position at y=24
             self.player.rect.x = (self.current_map.width * TILE_SIZE) // 2
-            self.player.rect.y = 23 * TILE_SIZE  # Top edge of green block
+            self.player.rect.y = 24 * TILE_SIZE  # Top edge of green block
             # Reset velocity to prevent issues
             self.player.velocity_x = 0
             self.player.velocity_y = 0
@@ -173,16 +178,29 @@ class Game:
         
         # Update player
         elif current_state in [STATE_MAIN_MAP, STATE_EXPLORATION]:
-            self.player.update(dt, self.current_map)
-            
-            # Update enemies
-            self.current_map.update_enemies(dt, self.player)
-            
-            # Update camera
-            self.update_camera()
-            
-            # Check for map transitions
-            self.check_map_transitions()
+            # Block player movement if menu is open
+            if not self.ui_manager.active_menu:
+                self.player.update(dt, self.current_map)
+                
+                # Update enemies
+                self.current_map.update_enemies(dt, self.player)
+                
+                # Update camera
+                self.update_camera()
+                
+                # Check for map transitions
+                self.check_map_transitions()
+            else:
+                # Menu is open - stop player movement but still apply gravity
+                # Reset horizontal velocity to stop movement
+                self.player.velocity_x = 0
+                # Still apply gravity so player doesn't float
+                self.player.velocity_y += GRAVITY * dt
+                self.player.velocity_y = min(self.player.velocity_y, 1000)
+                # Apply vertical movement for gravity
+                self.player.rect.y += self.player.velocity_y * dt
+                self.player.on_ground = False
+                self.player.handle_collision(self.current_map, 'y')
     
     def update_camera(self):
         """Center camera on player"""
@@ -204,9 +222,9 @@ class Game:
                 self.current_map = self.map_manager.load_map(MAP_EXPLORATION)
                 self.state_manager.set_state(STATE_EXPLORATION)
                 # Position player on ground in exploration map
-                # Ground is at y=35, player height is 2 tiles, so position at y=33
+                # Ground is at y=35, player height is 1 tile, so position at y=34
                 self.player.rect.x = 100
-                self.player.rect.y = 33 * TILE_SIZE
+                self.player.rect.y = 34 * TILE_SIZE
                 # Reset velocity to prevent issues
                 self.player.velocity_x = 0
                 self.player.velocity_y = 0
@@ -214,9 +232,9 @@ class Game:
                 self.current_map = self.map_manager.load_map(MAP_MAIN)
                 self.state_manager.set_state(STATE_MAIN_MAP)
                 # Position player on ground in main map (center)
-                # Ground is at y=25, player height is 2 tiles, so position at y=23
+                # Ground is at y=25, player height is 1 tile, so position at y=24
                 self.player.rect.x = (self.current_map.width * TILE_SIZE) // 2
-                self.player.rect.y = 23 * TILE_SIZE
+                self.player.rect.y = 24 * TILE_SIZE
                 # Reset velocity to prevent issues
                 self.player.velocity_x = 0
                 self.player.velocity_y = 0

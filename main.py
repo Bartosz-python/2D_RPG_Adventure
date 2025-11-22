@@ -29,6 +29,11 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif event.type == pygame.VIDEORESIZE:
+                # Handle window resize
+                screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
+                game.screen = screen
+                game.update_screen_size(event.w, event.h, is_fullscreen=False)
             elif event.type == pygame.KEYDOWN:
                 # Toggle fullscreen with F11
                 if event.key == pygame.K_F11:
@@ -52,6 +57,8 @@ def main():
                 else:
                     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
                 game.screen = screen  # Update game's screen reference
+                screen_width, screen_height = screen.get_size()
+                game.update_screen_size(screen_width, screen_height, is_fullscreen=fullscreen)
             elif action == 'close' or action == 'quit':
                 running = False
         
