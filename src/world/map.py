@@ -23,6 +23,38 @@ class Map:
         
         # Coins/items on ground
         self.items = []
+        
+        # Add invisible collision blocks at map edges
+        self._add_edge_collisions()
+    
+    def _add_edge_collisions(self):
+        """Add invisible collision blocks at map edges"""
+        # Use grid coordinates (Block multiplies by TILE_SIZE internally)
+        wall_thickness = 2  # 2 tiles thick walls to prevent clipping
+        
+        # Left wall (negative x coordinates)
+        for y in range(self.height):
+            for wx in range(-wall_thickness, 0):
+                block = Block(wx, y, 'stone', self.asset_manager, destructible=False)
+                self.blocks.append(block)
+        
+        # Right wall (beyond map width)
+        for y in range(self.height):
+            for wx in range(self.width, self.width + wall_thickness):
+                block = Block(wx, y, 'stone', self.asset_manager, destructible=False)
+                self.blocks.append(block)
+        
+        # Top wall (negative y coordinates)
+        for x in range(-wall_thickness, self.width + wall_thickness):
+            for wy in range(-wall_thickness, 0):
+                block = Block(x, wy, 'stone', self.asset_manager, destructible=False)
+                self.blocks.append(block)
+        
+        # Bottom wall (beyond map height)
+        for x in range(-wall_thickness, self.width + wall_thickness):
+            for wy in range(self.height, self.height + wall_thickness):
+                block = Block(x, wy, 'stone', self.asset_manager, destructible=False)
+                self.blocks.append(block)
     
     def add_block(self, x, y, block_type, destructible=True):
         """Add block to map"""
@@ -69,9 +101,14 @@ class Map:
                 return exit_point['destination']
         return None
     
-    def spawn_enemy(self, x, y, enemy_type):
-        """Spawn enemy on map"""
-        enemy = Enemy(x * TILE_SIZE, y * TILE_SIZE, enemy_type, self.asset_manager)
+    def spawn_enemy(self, x, y, enemy_type, sprite_path=None):
+        """Spawn enemy on map
+        Args:
+            x, y: Grid coordinates
+            enemy_type: Type of enemy
+            sprite_path: Optional custom sprite path for enemy graphics
+        """
+        enemy = Enemy(x * TILE_SIZE, y * TILE_SIZE, enemy_type, self.asset_manager, sprite_path)
         self.enemies.append(enemy)
     
     def update_enemies(self, dt, player):

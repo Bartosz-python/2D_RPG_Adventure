@@ -6,9 +6,10 @@ import pygame
 from src.config.settings import *
 
 class Enemy:
-    def __init__(self, x, y, enemy_type, asset_manager):
+    def __init__(self, x, y, enemy_type, asset_manager, sprite_path=None):
         self.enemy_type = enemy_type
         self.asset_manager = asset_manager
+        self.sprite_path = sprite_path  # Custom sprite path for graphics
         
         # Get stats from enemy type
         stats = ENEMY_TYPES.get(enemy_type, ENEMY_TYPES['goblin'])
@@ -43,8 +44,8 @@ class Enemy:
             else:
                 self.velocity_x = 0
             
-            # Attack if close enough
-            if distance < TILE_SIZE * 2 and self.attack_cooldown <= 0:
+            # Attack if close enough (but not if player is attacking - give player priority)
+            if distance < TILE_SIZE * 2 and self.attack_cooldown <= 0 and not player.is_attacking:
                 player.take_damage(self.damage)
                 self.attack_cooldown = ENEMY_ATTACK_COOLDOWN
         else:
@@ -94,33 +95,50 @@ class Enemy:
         screen_x = self.rect.x - camera_x
         screen_y = self.rect.y - camera_y
         
+        # Try to load custom sprite if path provided
+        sprite = None
+        if self.sprite_path:
+            try:
+                sprite = pygame.image.load(self.sprite_path).convert_alpha()
+                sprite = pygame.transform.scale(sprite, (self.rect.width, self.rect.height))
+            except:
+                sprite = None
+        
+        # If no custom sprite, try asset manager
+        if not sprite:
+            sprite = self.asset_manager.get_sprite(f'enemy_{self.enemy_type}')
+        
         # Draw shadow
         shadow_rect = pygame.Rect(screen_x + 2, screen_y + self.rect.height - 3, self.rect.width - 4, 3)
         shadow_surface = pygame.Surface((shadow_rect.width, shadow_rect.height), pygame.SRCALPHA)
         shadow_surface.fill((0, 0, 0, 120))
         screen.blit(shadow_surface, shadow_rect)
         
-        # Draw enemy body with gradient
-        base_color = (200, 50, 50)  # Dark red
-        highlight_color = (255, 100, 100)  # Light red
-        
-        # Main body
-        enemy_rect = pygame.Rect(screen_x, screen_y, self.rect.width, self.rect.height)
-        pygame.draw.rect(screen, base_color, enemy_rect)
-        
-        # Highlight
-        highlight_rect = pygame.Rect(screen_x, screen_y, self.rect.width, self.rect.height // 3)
-        pygame.draw.rect(screen, highlight_color, highlight_rect)
-        
-        # Border
-        pygame.draw.rect(screen, (30, 30, 30), enemy_rect, 2)
-        
-        # Draw eyes (red glowing)
-        eye_y = screen_y + self.rect.height // 3
-        pygame.draw.circle(screen, (255, 200, 200), (screen_x + self.rect.width // 3, eye_y), 3)
-        pygame.draw.circle(screen, (255, 200, 200), (screen_x + 2 * self.rect.width // 3, eye_y), 3)
-        pygame.draw.circle(screen, (255, 0, 0), (screen_x + self.rect.width // 3, eye_y), 2)
-        pygame.draw.circle(screen, (255, 0, 0), (screen_x + 2 * self.rect.width // 3, eye_y), 2)
+        # Draw sprite if available, otherwise use placeholder
+        if sprite:
+            screen.blit(sprite, (screen_x, screen_y))
+        else:
+            # Draw enemy body with gradient (placeholder)
+            base_color = (200, 50, 50)  # Dark red
+            highlight_color = (255, 100, 100)  # Light red
+            
+            # Main body
+            enemy_rect = pygame.Rect(screen_x, screen_y, self.rect.width, self.rect.height)
+            pygame.draw.rect(screen, base_color, enemy_rect)
+            
+            # Highlight
+            highlight_rect = pygame.Rect(screen_x, screen_y, self.rect.width, self.rect.height // 3)
+            pygame.draw.rect(screen, highlight_color, highlight_rect)
+            
+            # Border
+            pygame.draw.rect(screen, (30, 30, 30), enemy_rect, 2)
+            
+            # Draw eyes (red glowing)
+            eye_y = screen_y + self.rect.height // 3
+            pygame.draw.circle(screen, (255, 200, 200), (screen_x + self.rect.width // 3, eye_y), 3)
+            pygame.draw.circle(screen, (255, 200, 200), (screen_x + 2 * self.rect.width // 3, eye_y), 3)
+            pygame.draw.circle(screen, (255, 0, 0), (screen_x + self.rect.width // 3, eye_y), 2)
+            pygame.draw.circle(screen, (255, 0, 0), (screen_x + 2 * self.rect.width // 3, eye_y), 2)
         
         # Draw HP bar above enemy
         hp_bar_width = TILE_SIZE

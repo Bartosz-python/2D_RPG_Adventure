@@ -11,6 +11,7 @@ from src.managers.ui_manager import UIManager
 from src.managers.quest_manager import QuestManager
 from src.managers.day_night_manager import DayNightManager
 from src.managers.asset_manager import AssetManager
+from src.managers.enemy_spawn_manager import EnemySpawnManager
 
 class Game:
     def __init__(self, screen):
@@ -24,6 +25,7 @@ class Game:
         self.day_night_manager = DayNightManager()
         self.quest_manager = QuestManager()
         self.ui_manager = UIManager(self.map_manager)
+        self.enemy_spawn_manager = EnemySpawnManager()
         
         # Load initial map first
         self.current_map = self.map_manager.load_map(MAP_MAIN)
@@ -34,6 +36,12 @@ class Game:
         start_x = (self.current_map.width * TILE_SIZE) // 2
         start_y = 23 * TILE_SIZE
         self.player = Player(start_x, start_y, self.asset_manager)
+        
+        # Track player spawn position for depth calculation
+        self.player_spawn_y = start_y
+        
+        # Initialize enemy spawn configurations
+        self._setup_enemy_spawns()
         
         # Start with tutorial (as per readme)
         # Player starts with club weapon until tutorial is complete
@@ -63,6 +71,16 @@ class Game:
                 # Check menu buttons
                 if self.ui_manager.active_menu:
                     self.ui_manager.handle_menu_click(event.pos, self.player)
+                    # Don't pass mouse click to player if menu is open
+                    return
+                
+                # Handle block attack (only in gameplay, not in menus)
+                current_state = self.state_manager.get_state()
+                if current_state in [STATE_MAIN_MAP, STATE_EXPLORATION]:
+                    # Try to attack block at mouse position (within 3-block radius)
+                    self.player.attack_block(event.pos, self.camera_x, self.camera_y, self.current_map)
+                    # Also trigger normal attack for enemies (handled in player.update)
+                    self.player.keys['attack'] = True
         
         # Handle ESC key based on context
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
@@ -178,23 +196,81 @@ class Game:
             # Update enemies
             self.current_map.update_enemies(dt, self.player)
             
+            # Update enemy spawn system (only in exploration)
+            if current_state == STATE_EXPLORATION:
+                self.enemy_spawn_manager.update(
+                    dt, 
+                    self.current_map, 
+                    self.day_night_manager,
+                    self.player_spawn_y,
+                    self.player.rect.centery
+                )
+            
             # Update camera
             self.update_camera()
             
             # Check for map transitions
             self.check_map_transitions()
     
+    def _setup_enemy_spawns(self):
+        """Setup enemy spawn configurations"""
+        # Example configurations - can be customized
+        # Goblin: spawns during day, at any depth
+        self.enemy_spawn_manager.register_enemy_type(
+            'goblin',
+            {'day': True, 'night': False, 'min_depth': 0, 'max_depth': None},
+            spawn_rate=0.15,
+            spawn_interval=8.0,
+            max_count=3
+        )
+        
+        # Skeleton: spawns during night, at depth 5+
+        self.enemy_spawn_manager.register_enemy_type(
+            'skeleton',
+            {'day': False, 'night': True, 'min_depth': 5, 'max_depth': None},
+            spawn_rate=0.1,
+            spawn_interval=10.0,
+            max_count=2
+        )
+        
+        # Orc: spawns during night, at depth 10+
+        self.enemy_spawn_manager.register_enemy_type(
+            'orc',
+            {'day': False, 'night': True, 'min_depth': 10, 'max_depth': None},
+            spawn_rate=0.05,
+            spawn_interval=15.0,
+            max_count=1
+        )
+    
+    def get_depth_level(self):
+        """Calculate current depth level (blocks below spawn)"""
+        depth = max(0, int((self.player.rect.y - self.player_spawn_y) / TILE_SIZE))
+        return depth
+    
     def update_camera(self):
-        """Center camera on player"""
-        self.camera_x = self.player.rect.centerx - SCREEN_WIDTH // 2
-        self.camera_y = self.player.rect.centery - SCREEN_HEIGHT // 2
-        
-        # Clamp camera to map bounds
-        max_x = self.current_map.width * TILE_SIZE - SCREEN_WIDTH
-        max_y = self.current_map.height * TILE_SIZE - SCREEN_HEIGHT
-        
-        self.camera_x = max(0, min(self.camera_x, max_x))
-        self.camera_y = max(0, min(self.camera_y, max_y))
+        """Center camera on player (only on exploration map)"""
+        # Only follow player on exploration map
+        if self.current_map.map_type == MAP_EXPLORATION:
+            self.camera_x = self.player.rect.centerx - SCREEN_WIDTH // 2
+            self.camera_y = self.player.rect.centery - SCREEN_HEIGHT // 2
+            
+            # Clamp camera to map bounds
+            max_x = self.current_map.width * TILE_SIZE - SCREEN_WIDTH
+            max_y = self.current_map.height * TILE_SIZE - SCREEN_HEIGHT
+            
+            self.camera_x = max(0, min(self.camera_x, max_x))
+            self.camera_y = max(0, min(self.camera_y, max_y))
+        else:
+            # For other maps, keep original behavior (camera follows player)
+            self.camera_x = self.player.rect.centerx - SCREEN_WIDTH // 2
+            self.camera_y = self.player.rect.centery - SCREEN_HEIGHT // 2
+            
+            # Clamp camera to map bounds
+            max_x = self.current_map.width * TILE_SIZE - SCREEN_WIDTH
+            max_y = self.current_map.height * TILE_SIZE - SCREEN_HEIGHT
+            
+            self.camera_x = max(0, min(self.camera_x, max_x))
+            self.camera_y = max(0, min(self.camera_y, max_y))
     
     def check_map_transitions(self):
         """Check if player is transitioning between maps"""
@@ -206,7 +282,10 @@ class Game:
                 # Position player on ground in exploration map
                 # Ground is at y=35, player height is 2 tiles, so position at y=33
                 self.player.rect.x = 100
-                self.player.rect.y = 33 * TILE_SIZE
+                spawn_y = 33 * TILE_SIZE
+                self.player.rect.y = spawn_y
+                # Update spawn position for depth calculation
+                self.player_spawn_y = spawn_y
                 # Reset velocity to prevent issues
                 self.player.velocity_x = 0
                 self.player.velocity_y = 0
@@ -216,7 +295,10 @@ class Game:
                 # Position player on ground in main map (center)
                 # Ground is at y=25, player height is 2 tiles, so position at y=23
                 self.player.rect.x = (self.current_map.width * TILE_SIZE) // 2
-                self.player.rect.y = 23 * TILE_SIZE
+                spawn_y = 23 * TILE_SIZE
+                self.player.rect.y = spawn_y
+                # Update spawn position for depth calculation
+                self.player_spawn_y = spawn_y
                 # Reset velocity to prevent issues
                 self.player.velocity_x = 0
                 self.player.velocity_y = 0
@@ -249,6 +331,10 @@ class Game:
             # Render map (with day/night cycle for background)
             self.current_map.render(screen, self.camera_x, self.camera_y, self.day_night_manager)
             
+            # Render mining radius indicator on exploration map
+            if current_state == STATE_EXPLORATION:
+                self.render_mining_radius(screen)
+            
             # Render player
             self.player.render(screen, self.camera_x, self.camera_y)
             
@@ -260,7 +346,27 @@ class Game:
                 screen.blit(overlay, (0, 0))
             
             # Render UI (always on top)
-            self.ui_manager.render(screen, self.player, self.day_night_manager)
+            depth_level = self.get_depth_level() if current_state == STATE_EXPLORATION else 0
+            self.ui_manager.render(screen, self.player, self.day_night_manager, depth_level)
+    
+    def render_mining_radius(self, screen):
+        """Render semi-transparent gray circle showing mining radius on exploration map"""
+        # Mining radius is 4.5 blocks (increased by 1.5x from 3)
+        mining_radius = TILE_SIZE * 4.5
+        
+        # Get player center position in screen coordinates
+        player_center_x = self.player.rect.centerx - self.camera_x
+        player_center_y = self.player.rect.centery - self.camera_y
+        
+        # Create a surface for the circle with alpha
+        radius_surface = pygame.Surface((mining_radius * 2, mining_radius * 2), pygame.SRCALPHA)
+        
+        # Draw semi-transparent gray circle (outline only)
+        gray_color = (128, 128, 128, 100)  # Gray with alpha
+        pygame.draw.circle(radius_surface, gray_color, (mining_radius, mining_radius), mining_radius, 2)
+        
+        # Blit the circle surface to screen
+        screen.blit(radius_surface, (player_center_x - mining_radius, player_center_y - mining_radius))
     
     def render_tutorial(self, screen):
         """Render tutorial screen"""
@@ -275,7 +381,7 @@ class Game:
             "Use W/A/S/D or Arrow Keys to move",
             "Press W or Up to jump",
             "Press E to interact with objects",
-            "Press SPACE to attack or destroy blocks",
+            "Press left mouse button to attack or destroy blocks",
             "Press ESC to quit",
             "",
             "Press ENTER to continue to weapon selection",
