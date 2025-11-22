@@ -31,14 +31,14 @@ class UIManager:
         hp_bar_x = inventory_x + (inventory_bar_width - hp_bar_width) // 2
         self.hp_bar_pos = (hp_bar_x, padding + 90)  # Below inventory
         
-        # Top-right corner: Exit button and Day counter (stacked)
+        # Top-right corner: Exit button
         exit_btn_size = 40
         self.exit_button_pos = (SCREEN_WIDTH - exit_btn_size - padding, padding)
         self.exit_button_rect = None
         
-        # Day counter below exit button
+        # Top-left corner: Day counter (moved to left side for full visibility)
         day_counter_width = 150
-        self.day_counter_pos = (SCREEN_WIDTH - day_counter_width - padding, padding + exit_btn_size + 10)
+        self.day_counter_pos = (padding, padding)
         
         # Bottom-center: Stats and Equipment (centered, properly spaced)
         equipment_bar_width = (self.slot_size + self.slot_padding) * 7 - self.slot_padding
@@ -196,7 +196,7 @@ class UIManager:
         equipment_bar_width = (self.slot_size + self.slot_padding) * num_slots - self.slot_padding
         panel_width = equipment_bar_width + 20
         panel_height = self.slot_size + 35
-        panel_rect = pygame.Rect(x - 10, y - 25, panel_width, panel_height)
+        panel_rect = pygame.Rect(x - 20, y - 25, panel_width, panel_height)
         panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
         for py in range(panel_height):
             alpha = int(220 - (py / panel_height) * 20)

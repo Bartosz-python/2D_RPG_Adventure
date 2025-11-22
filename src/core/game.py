@@ -238,8 +238,8 @@ class Game:
             else:
                 overlay_alpha = 0
             
-            # Render map
-            self.current_map.render(screen, self.camera_x, self.camera_y)
+            # Render map (with day/night cycle for background)
+            self.current_map.render(screen, self.camera_x, self.camera_y, self.day_night_manager)
             
             # Render player
             self.player.render(screen, self.camera_x, self.camera_y)

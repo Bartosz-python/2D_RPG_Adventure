@@ -88,30 +88,56 @@ class Map:
         # This would regenerate the map
         pass
     
-    def render(self, screen, camera_x, camera_y):
+    def render(self, screen, camera_x, camera_y, day_night_manager=None):
         """Render entire map"""
-        # Render background (sky gradient) - optimized with surface
-        if not hasattr(self, '_bg_surface') or self._bg_surface.get_size() != (SCREEN_WIDTH, SCREEN_HEIGHT):
-            # Beautiful sky gradient
-            bg_color_top = (135, 206, 250)  # Light sky blue
-            bg_color_mid = (176, 196, 222)  # Light steel blue
-            bg_color_bottom = (230, 230, 250)  # Lavender (near horizon)
-            self._bg_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-            for y in range(SCREEN_HEIGHT):
-                ratio = y / SCREEN_HEIGHT
-                if ratio < 0.5:
-                    # Top half: top to mid
-                    local_ratio = ratio * 2
-                    r = int(bg_color_top[0] * (1 - local_ratio) + bg_color_mid[0] * local_ratio)
-                    g = int(bg_color_top[1] * (1 - local_ratio) + bg_color_mid[1] * local_ratio)
-                    b = int(bg_color_top[2] * (1 - local_ratio) + bg_color_mid[2] * local_ratio)
-                else:
-                    # Bottom half: mid to bottom
-                    local_ratio = (ratio - 0.5) * 2
-                    r = int(bg_color_mid[0] * (1 - local_ratio) + bg_color_bottom[0] * local_ratio)
-                    g = int(bg_color_mid[1] * (1 - local_ratio) + bg_color_bottom[1] * local_ratio)
-                    b = int(bg_color_mid[2] * (1 - local_ratio) + bg_color_bottom[2] * local_ratio)
-                pygame.draw.line(self._bg_surface, (r, g, b), (0, y), (SCREEN_WIDTH, y))
+        # Calculate day/night darkness factor (0.0 = full day, 1.0 = full night)
+        # Transition starts from day (0.5) to night (0.75), then full night
+        darkness_factor = 0.0
+        if day_night_manager:
+            time_of_day = day_night_manager.get_time_of_day()
+            # Start transition from day to night (0.5 to 0.75)
+            if 0.5 <= time_of_day < 0.75:
+                # Transition from day to night: 0.0 to 0.7 (not fully dark to keep visibility)
+                darkness_factor = ((time_of_day - 0.5) / 0.25) * 0.7
+            elif time_of_day >= 0.75 or time_of_day < 0.25:
+                # Night: 0.7 darkness (not fully dark)
+                darkness_factor = 0.7
+            elif 0.25 <= time_of_day < 0.5:
+                # Dawn: transition from night to day
+                darkness_factor = 0.7 * (1 - (time_of_day - 0.25) / 0.25)
+        
+        # Base colors (day)
+        bg_color_top_day = (135, 206, 250)  # Light sky blue
+        bg_color_mid_day = (176, 196, 222)  # Light steel blue
+        bg_color_bottom_day = (230, 230, 250)  # Lavender
+        
+        # Night colors (darker but still visible)
+        bg_color_top_night = (20, 20, 40)  # Dark blue
+        bg_color_mid_night = (15, 15, 30)  # Darker blue
+        bg_color_bottom_night = (10, 10, 20)  # Very dark blue
+        
+        # Interpolate between day and night colors
+        bg_color_top = tuple(int(bg_color_top_day[i] * (1 - darkness_factor) + bg_color_top_night[i] * darkness_factor) for i in range(3))
+        bg_color_mid = tuple(int(bg_color_mid_day[i] * (1 - darkness_factor) + bg_color_mid_night[i] * darkness_factor) for i in range(3))
+        bg_color_bottom = tuple(int(bg_color_bottom_day[i] * (1 - darkness_factor) + bg_color_bottom_night[i] * darkness_factor) for i in range(3))
+        
+        # Render background (sky gradient) - regenerate each frame to reflect day/night changes
+        self._bg_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        for y in range(SCREEN_HEIGHT):
+            ratio = y / SCREEN_HEIGHT
+            if ratio < 0.5:
+                # Top half: top to mid
+                local_ratio = ratio * 2
+                r = int(bg_color_top[0] * (1 - local_ratio) + bg_color_mid[0] * local_ratio)
+                g = int(bg_color_top[1] * (1 - local_ratio) + bg_color_mid[1] * local_ratio)
+                b = int(bg_color_top[2] * (1 - local_ratio) + bg_color_mid[2] * local_ratio)
+            else:
+                # Bottom half: mid to bottom
+                local_ratio = (ratio - 0.5) * 2
+                r = int(bg_color_mid[0] * (1 - local_ratio) + bg_color_bottom[0] * local_ratio)
+                g = int(bg_color_mid[1] * (1 - local_ratio) + bg_color_bottom[1] * local_ratio)
+                b = int(bg_color_mid[2] * (1 - local_ratio) + bg_color_bottom[2] * local_ratio)
+            pygame.draw.line(self._bg_surface, (r, g, b), (0, y), (SCREEN_WIDTH, y))
         screen.blit(self._bg_surface, (0, 0))
         
         # Special rendering for main map: green ground block
