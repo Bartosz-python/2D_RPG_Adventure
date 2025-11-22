@@ -46,7 +46,7 @@ class Player:
         }
     
     def handle_input(self, event):
-        """Handle keyboard input"""
+        """Handle keyboard and mouse input"""
         if event.type == pygame.KEYDOWN:
             if event.key in [pygame.K_a, pygame.K_LEFT]:
                 self.keys['left'] = True
@@ -54,8 +54,6 @@ class Player:
                 self.keys['right'] = True
             elif event.key in [pygame.K_w, pygame.K_UP]:
                 self.keys['jump'] = True
-            elif event.key == pygame.K_SPACE:
-                self.keys['attack'] = True
         
         elif event.type == pygame.KEYUP:
             if event.key in [pygame.K_a, pygame.K_LEFT]:
@@ -64,7 +62,13 @@ class Player:
                 self.keys['right'] = False
             elif event.key in [pygame.K_w, pygame.K_UP]:
                 self.keys['jump'] = False
-            elif event.key == pygame.K_SPACE:
+        
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1:  # Left mouse button
+                self.keys['attack'] = True
+        
+        elif event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1:  # Left mouse button
                 self.keys['attack'] = False
     
     def update(self, dt, current_map):
@@ -104,8 +108,8 @@ class Player:
         if self.attack_cooldown > 0:
             self.attack_cooldown -= dt
         
-        # Handle attack (check both event-based and current key state)
-        if (keys[pygame.K_SPACE] or self.keys['attack']) and self.attack_cooldown <= 0:
+        # Handle attack (only on click event, not while held)
+        if self.keys['attack'] and self.attack_cooldown <= 0:
             self.perform_attack(current_map)
             self.attack_cooldown = ATTACK_COOLDOWN
             self.keys['attack'] = False  # Reset attack key
@@ -151,7 +155,7 @@ class Player:
         """Execute attack"""
         self.is_attacking = True
         
-        # Create attack hitbox in front of player
+        # Create attack hitbox in front of player (for enemies)
         attack_range = TILE_SIZE * 1.5
         if self.facing_right:
             attack_rect = pygame.Rect(
@@ -175,6 +179,48 @@ class Player:
                 if enemy.hp <= 0:
                     self.gold += enemy.coin_value
                     current_map.enemies.remove(enemy)
+        
+        # Block destruction is handled separately via attack_block method with mouse targeting
+    
+    def attack_block(self, mouse_pos, camera_x, camera_y, current_map):
+        """Attack the top-left block of a 2x2 area at mouse position within a 4.5-block radius"""
+        # Convert screen coordinates to world coordinates
+        world_x = mouse_pos[0] + camera_x
+        world_y = mouse_pos[1] + camera_y
+        
+        # Check if the targeted block is within a 4.5-block radius of the player (increased by 1.5x)
+        player_center_x, player_center_y = self.rect.center
+        distance = ((world_x - player_center_x)**2 + (world_y - player_center_y)**2)**0.5
+        mining_radius = TILE_SIZE * 4.5  # 4.5-block radius (was 3, increased by 1.5x)
+        if distance > mining_radius:
+            return False
+        
+        # Find the top-left block of the 2x2 grid area containing the mouse position
+        # Blocks are in a 2x2 grid, so find which 2x2 cell the mouse is in
+        BLOCK_GRID_SIZE = TILE_SIZE * 2  # 2x2 block grid size
+        grid_x = (world_x // BLOCK_GRID_SIZE) * BLOCK_GRID_SIZE
+        grid_y = (world_y // BLOCK_GRID_SIZE) * BLOCK_GRID_SIZE
+        
+        # Find the top-left block at this grid position
+        block = current_map.get_block_at(grid_x, grid_y)
+        if block and block.destructible:
+            # Apply damage to the block
+            BLOCK_BASE_DAMAGE = 8
+            damage = BLOCK_BASE_DAMAGE
+            if block.take_damage(damage):
+                # Block destroyed
+                import random
+                # Random chance to get gold from blocks (10% chance)
+                if random.random() < 0.1:
+                    gold_amount = random.randint(1, 5)
+                    self.add_gold(gold_amount)
+                
+                # Add block to inventory and remove from map
+                if self.inventory.add_item(block.block_type):
+                    current_map.remove_block(block)
+                return True
+            return True  # Block damaged but not destroyed
+        return False
     
     def start_destroying_block(self, current_map):
         """Start destroying a block"""
