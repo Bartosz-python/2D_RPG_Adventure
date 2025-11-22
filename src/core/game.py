@@ -49,11 +49,16 @@ class Game:
         # Handle mouse clicks
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left click
+                # Check title bar buttons first
+                title_bar_action = self.ui_manager.handle_title_bar_click(event.pos)
+                if title_bar_action:
+                    return title_bar_action  # Return action to main loop
+                
                 # Check exit button
                 if hasattr(self.ui_manager, 'exit_button_rect') and self.ui_manager.exit_button_rect:
                     if self.ui_manager.exit_button_rect.collidepoint(event.pos):
                         self.running = False
-                        return
+                        return 'quit'
                 
                 # Check menu buttons
                 if self.ui_manager.active_menu:
@@ -221,6 +226,9 @@ class Game:
         screen.fill(BLACK)
         
         current_state = self.state_manager.get_state()
+        
+        # Render title bar first (always visible on top)
+        self.ui_manager.render_title_bar(screen)
         
         # Render tutorial
         if current_state == STATE_TUTORIAL:

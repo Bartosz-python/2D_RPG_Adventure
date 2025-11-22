@@ -37,8 +37,23 @@ def main():
                         screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.FULLSCREEN)
                     else:
                         screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
+                    game.screen = screen  # Update game's screen reference
             
-            game.handle_event(event)
+            # Handle title bar button clicks
+            action = game.handle_event(event)
+            if action == 'minimize':
+                # Minimize window (using SDL)
+                pygame.display.iconify()
+            elif action == 'maximize':
+                # Toggle fullscreen
+                fullscreen = not fullscreen
+                if fullscreen:
+                    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.FULLSCREEN)
+                else:
+                    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
+                game.screen = screen  # Update game's screen reference
+            elif action == 'close' or action == 'quit':
+                running = False
         
         # Update game state
         game.update(dt)

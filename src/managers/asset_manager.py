@@ -14,7 +14,6 @@ class AssetManager:
         self._load_placeholder_assets()
     
     def _load_placeholder_assets(self):
-        """Create placeholder assets for MVP"""
         # Placeholder sprites (will be replaced with actual images)
         self.sprites['player'] = self._create_placeholder_surface(TILE_SIZE, TILE_SIZE * 2, BLUE)
         self.sprites['enemy'] = self._create_placeholder_surface(TILE_SIZE, TILE_SIZE * 2, RED)
