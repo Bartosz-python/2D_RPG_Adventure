@@ -1,0 +1,7 @@
+- Ogarnąć odzwiekowanie
+- Pomoc z artami
+- Font znalezc
+- Ogarnac brakujace pliki
+- Ogarnac functionality przyciskow zeby moc wejsc do gry
+- Przenies teleport na prawa strone mapy
+- gracz ma sie pojawiac przy gornej krawedzi zielonego bloku obok domkow, nie na gorze mapy
