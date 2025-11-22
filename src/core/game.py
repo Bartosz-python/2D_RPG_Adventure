@@ -70,22 +70,6 @@ class Game:
                     if menu_handled:
                         return  # Menu handled the click, don't process other buttons
                 
-<<<<<<< HEAD
-=======
-                # Check title bar buttons (includes close button)
-                title_bar_action = self.ui_manager.handle_title_bar_click(event.pos)
-                if title_bar_action:
-                    return title_bar_action  # Return action to main loop
-                
-                # Handle block attack (only in gameplay, not in menus)
-                if not self.ui_manager.active_menu:
-                    current_state = self.state_manager.get_state()
-                    if current_state in [STATE_MAIN_MAP, STATE_EXPLORATION]:
-                        # Try to attack block at mouse position (within 3-block radius)
-                        self.player.attack_block(event.pos, self.camera_x, self.camera_y, self.current_map)
-                        # Also trigger normal attack for enemies (handled in player.update)
-                        self.player.keys['attack'] = True
->>>>>>> dfa76e4da76264b8710f5dca7c7e23d3aeb2edee
         
         # Handle ESC key based on context
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
@@ -348,7 +332,6 @@ class Game:
             # Render map background and blocks (with day/night cycle for background)
             self.current_map.render(screen, self.camera_x, self.camera_y, self.day_night_manager)
             
-<<<<<<< HEAD
             # Render buildings (before player, so player appears on top)
             for building in self.current_map.buildings:
                 building.render(screen, self.camera_x, self.camera_y)
@@ -358,13 +341,6 @@ class Game:
                 enemy.render(screen, self.camera_x, self.camera_y)
             
             # Render player (on first plan - after buildings and enemies)
-=======
-            # Render mining radius indicator on exploration map
-            if current_state == STATE_EXPLORATION:
-                self.render_mining_radius(screen)
-            
-            # Render player
->>>>>>> dfa76e4da76264b8710f5dca7c7e23d3aeb2edee
             self.player.render(screen, self.camera_x, self.camera_y)
             
             # Apply day/night overlay
