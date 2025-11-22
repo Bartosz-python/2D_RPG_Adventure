@@ -112,7 +112,7 @@ class UIManager:
         self.title_bar_button_padding = 5
         self.title_bar_buttons = {}  # Will store button rects
     
-    def render(self, screen, player, day_night_manager):
+    def render(self, screen, player, day_night_manager, depth_level=0):
         """Render all UI elements"""
         # Note: Title bar is rendered separately in game.render() to be always visible
         self.render_inventory(screen, player)
@@ -120,6 +120,7 @@ class UIManager:
         self.render_equipment(screen, player)
         self.render_stats(screen, player)
         self.render_day_counter(screen, day_night_manager)
+        self.render_depth_level(screen, depth_level)
         
         # Render active menu if any
         if self.active_menu:
@@ -381,6 +382,31 @@ class UIManager:
         
         screen.blit(day_text, (x, y))
         screen.blit(time_text, (x, y + 22))
+    
+    def render_depth_level(self, screen, depth_level):
+        """Render depth level (below day counter)"""
+        if depth_level == 0:
+            return  # Don't show depth on main map
+        
+        depth_text = self.small_font.render(f"Depth: {depth_level}", True, WHITE)
+        
+        # Position below day counter
+        x, y = self.day_counter_pos
+        y += 50  # Below day counter panel
+        
+        panel_width = depth_text.get_width() + 20
+        panel_height = 30
+        
+        # Background panel with gradient
+        panel_rect = pygame.Rect(x - 10, y, panel_width, panel_height)
+        panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+        for py in range(panel_height):
+            alpha = int(220 - (py / panel_height) * 20)
+            pygame.draw.line(panel_surface, (50, 50, 60, alpha), (0, py), (panel_width, py))
+        screen.blit(panel_surface, (x - 10, y))
+        pygame.draw.rect(screen, (120, 120, 140), panel_rect, 2)
+        
+        screen.blit(depth_text, (x, y + 6))
     
     def render_menu(self, screen, player):
         """Render building interaction menu"""

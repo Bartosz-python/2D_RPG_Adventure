@@ -57,27 +57,46 @@ class MapManager:
         return game_map
     
     def _create_exploration_map(self):
-        """Create exploration map with enemies and resources"""
+        """Create exploration map with platform of destroyable blocks"""
         from src.world.map import Map
-        game_map = Map(80, 40, self.asset_manager)
+        # 8 screen lengths: 1920 * 8 / 32 = 480 tiles
+        map_width = (SCREEN_WIDTH * 8) // TILE_SIZE
+        # Increase depth by 4 screen lengths: 1080 * 4 / 32 = 135 tiles
+        # Original height was 40, so new height is 40 + 135 = 175 tiles
+        map_height = 40 + (SCREEN_HEIGHT * 4) // TILE_SIZE
+        game_map = Map(map_width, map_height, self.asset_manager, map_type=MAP_EXPLORATION)
         
-        # Add ground
-        for x in range(80):
-            for y in range(35, 40):
+        # Ground level (non-destructible base)
+        ground_y = 35
+        for x in range(map_width):
+            for y in range(ground_y, 40):
                 game_map.add_block(x, y, 'stone', destructible=False)
         
-        # Add destructible blocks (resources)
-        import random
-        for x in range(0, 80, 3):
-            for y in range(30, 35):
-                if random.random() < 0.6:
-                    block_type = random.choice(['stone', 'dirt'])
-                    game_map.add_block(x, y, block_type, destructible=True)
+        # Create platform of destroyable square blocks
+        # Platform starts at y=30 and goes up a few rows
+        platform_start_y = 30
+        platform_height = 5  # 5 rows of blocks
         
-        # Add enemies
-        game_map.spawn_enemy(30, 30, 'goblin')
-        game_map.spawn_enemy(50, 30, 'skeleton')
-        game_map.spawn_enemy(70, 30, 'orc')
+        # Fill entire platform with destroyable blocks
+        # Blocks are 2x2 size, so place them at 2x2 intervals (every other grid position)
+        for x in range(0, map_width, 2):  # Step by 2 for 2x2 blocks
+            for y in range(platform_start_y, platform_start_y + platform_height, 2):  # Step by 2
+                # Use alternating block types for visual variety
+                block_type = 'stone' if ((x // 2) + (y // 2)) % 2 == 0 else 'dirt'
+                game_map.add_block(x, y, block_type, destructible=True)
+        
+        # Fill new depth (from y=40 to bottom) with destroyable blocks
+        # Blocks are 2x2 size, so place them at 2x2 intervals
+        for x in range(0, map_width, 2):  # Step by 2 for 2x2 blocks
+            for y in range(40, map_height - 1, 2):  # Step by 2, leave last row for dark block
+                # Use alternating block types for visual variety
+                block_type = 'stone' if ((x // 2) + (y // 2)) % 2 == 0 else 'dirt'
+                game_map.add_block(x, y, block_type, destructible=True)
+        
+        # Add unbreakable dark block across the whole bottom edge
+        bottom_y = map_height - 1
+        for x in range(map_width):
+            game_map.add_block(x, bottom_y, 'stone', destructible=False)
         
         # Add exit back to main
         game_map.add_exit(5, 34, "main")

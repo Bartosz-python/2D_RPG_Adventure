@@ -7,7 +7,7 @@ from src.config.settings import *
 from src.entities.entity import Entity
 
 class Enemy(Entity):
-    def __init__(self, x, y, enemy_type, asset_manager):
+    def __init__(self, x, y, enemy_type, asset_manager, sprite_path=None):
         # Get stats from enemy type
         stats = ENEMY_TYPES.get(enemy_type, ENEMY_TYPES['goblin'])
         
@@ -16,6 +16,7 @@ class Enemy(Entity):
         
         self.enemy_type = enemy_type
         self.asset_manager = asset_manager
+        self.sprite_path = sprite_path  # Custom sprite path for graphics
         
         # Stats from config
         self.max_hp = stats['hp']
@@ -128,15 +129,38 @@ class Enemy(Entity):
         screen_x = self.rect.x - camera_x
         screen_y = self.rect.y - camera_y
         
-        # Get enemy color based on type
-        color = self._get_enemy_color()
+        # Try to load custom sprite if path provided
+        sprite = None
+        if self.sprite_path:
+            try:
+                sprite = pygame.image.load(self.sprite_path).convert_alpha()
+                sprite = pygame.transform.scale(sprite, (self.rect.width, self.rect.height))
+            except:
+                sprite = None
         
-        # Draw enemy body
-        pygame.draw.rect(screen, color, (screen_x, screen_y, self.rect.width, self.rect.height))
+        # If no custom sprite, try asset manager
+        if not sprite:
+            sprite = self.asset_manager.get_sprite(f'enemy_{self.enemy_type}') if self.asset_manager else None
         
-        # Draw facing indicator
-        eye_x = screen_x + (self.rect.width - 5) if self.facing_right else screen_x + 5
-        pygame.draw.circle(screen, WHITE, (eye_x, screen_y + 10), 3)
+        # Draw shadow
+        shadow_rect = pygame.Rect(screen_x + 2, screen_y + self.rect.height - 3, self.rect.width - 4, 3)
+        shadow_surface = pygame.Surface((shadow_rect.width, shadow_rect.height), pygame.SRCALPHA)
+        shadow_surface.fill((0, 0, 0, 120))
+        screen.blit(shadow_surface, shadow_rect)
+        
+        # Draw sprite if available, otherwise use color-based placeholder
+        if sprite:
+            screen.blit(sprite, (screen_x, screen_y))
+        else:
+            # Get enemy color based on type
+            color = self._get_enemy_color()
+            
+            # Draw enemy body
+            pygame.draw.rect(screen, color, (screen_x, screen_y, self.rect.width, self.rect.height))
+            
+            # Draw facing indicator
+            eye_x = screen_x + (self.rect.width - 5) if self.facing_right else screen_x + 5
+            pygame.draw.circle(screen, WHITE, (eye_x, screen_y + 10), 3)
         
         # Draw HP bar above enemy
         self._render_hp_bar(screen, screen_x, screen_y)
