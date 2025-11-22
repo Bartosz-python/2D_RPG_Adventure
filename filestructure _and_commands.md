@@ -182,3 +182,35 @@ All placeholder assets can be replaced by:
 4. Placing in correct asset folder
 
 The AssetManager will automatically load new assets on game restart.
+
+assets/
+├── fonts/
+│   └── default.ttf                    # (opcjonalnie - jeśli chcesz własną czcionkę)
+│
+├── sounds/
+│   ├── ambient/                       # Dźwięki otoczenia
+│   ├── combat/                        # Dźwięki walki
+│   └── ui/                            # Dźwięki interfejsu
+│
+└── sprites/
+    ├── buildings/                     # ⭐ BUDYNKI I OGNISKO
+    │   ├── bedroom.png               # Sypialnia
+    │   ├── smith.png                 # Kowal
+    │   ├── tailor.png                # Krawiec
+    │   ├── witch.png                  # Wiedźma
+    │   └── fireplace.png              # Ognisko/Kamienne palenisko
+    │
+    ├── blocks/                         # (opcjonalnie - bloki)
+    │   ├── block_stone.png           # Kamień
+    │   └── block_dirt.png            # Ziemia
+    │
+    ├── enemies/                       # (opcjonalnie - wrogowie)
+    │   └── enemy.png                 # Sprite wroga
+    │
+    ├── items/                         # (opcjonalnie - przedmioty)
+    │   └── coin.png                  # Moneta
+    │
+    ├── ui/                            # (opcjonalnie - elementy UI)
+    │
+    ├── background.png                 # ⭐ TŁO OGÓLNE (dla exploration map)
+    └── background_main.png            # ⭐ TŁO GŁÓWNEJ BAZY (dla main map)

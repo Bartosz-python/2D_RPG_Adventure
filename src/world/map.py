@@ -90,21 +90,21 @@ class Map:
     
     def render(self, screen, camera_x, camera_y, day_night_manager=None):
         """Render entire map"""
-        # Calculate day/night darkness factor (0.0 = full day, 1.0 = full night)
-        # Transition starts from day (0.5) to night (0.75), then full night
+        # Calculate day/night darkness factor (0.0 = full day, 0.8 = max night)
+        # Maximum darkness is 0.8 to keep minimum 20% visibility (1.0 - 0.8 = 0.2)
         darkness_factor = 0.0
         if day_night_manager:
             time_of_day = day_night_manager.get_time_of_day()
             # Start transition from day to night (0.5 to 0.75)
             if 0.5 <= time_of_day < 0.75:
-                # Transition from day to night: 0.0 to 0.7 (not fully dark to keep visibility)
-                darkness_factor = ((time_of_day - 0.5) / 0.25) * 0.7
+                # Transition from day to night: 0.0 to 0.8 (max 80% darkness = 20% visibility)
+                darkness_factor = ((time_of_day - 0.5) / 0.25) * 0.8
             elif time_of_day >= 0.75 or time_of_day < 0.25:
-                # Night: 0.7 darkness (not fully dark)
-                darkness_factor = 0.7
+                # Night: 0.8 darkness (20% visibility minimum)
+                darkness_factor = 0.8
             elif 0.25 <= time_of_day < 0.5:
                 # Dawn: transition from night to day
-                darkness_factor = 0.7 * (1 - (time_of_day - 0.25) / 0.25)
+                darkness_factor = 0.8 * (1 - (time_of_day - 0.25) / 0.25)
         
         # Base colors (day)
         bg_color_top_day = (135, 206, 250)  # Light sky blue
@@ -121,25 +121,55 @@ class Map:
         bg_color_mid = tuple(int(bg_color_mid_day[i] * (1 - darkness_factor) + bg_color_mid_night[i] * darkness_factor) for i in range(3))
         bg_color_bottom = tuple(int(bg_color_bottom_day[i] * (1 - darkness_factor) + bg_color_bottom_night[i] * darkness_factor) for i in range(3))
         
-        # Render background (sky gradient) - regenerate each frame to reflect day/night changes
+        # Render background - try PNG first, fallback to gradient
         screen_width, screen_height = screen.get_size()
-        self._bg_surface = pygame.Surface((screen_width, screen_height))
-        for y in range(screen_height):
-            ratio = y / screen_height
-            if ratio < 0.5:
-                # Top half: top to mid
-                local_ratio = ratio * 2
-                r = int(bg_color_top[0] * (1 - local_ratio) + bg_color_mid[0] * local_ratio)
-                g = int(bg_color_top[1] * (1 - local_ratio) + bg_color_mid[1] * local_ratio)
-                b = int(bg_color_top[2] * (1 - local_ratio) + bg_color_mid[2] * local_ratio)
+        
+        # Use main base background for main map if available, otherwise use general background
+        if self.map_type == MAP_MAIN:
+            bg_sprite = self.asset_manager.get_sprite('background_main')
+            if not bg_sprite:
+                bg_sprite = self.asset_manager.get_sprite('background')
+        else:
+            bg_sprite = self.asset_manager.get_sprite('background')
+        
+        if bg_sprite:
+            # Use PNG background image
+            # Always scale to full screen size to fill entire visible window
+            bg_sprite = pygame.transform.scale(bg_sprite, (screen_width, screen_height))
+            
+            # Apply day/night darkness to background (only darken, keep minimum 20% visibility)
+            if darkness_factor > 0:
+                # Create a darkened version by multiplying brightness
+                # darkness_factor 0.8 means 20% brightness remains (80% darkness)
+                bg_sprite_copy = bg_sprite.copy()
+                # Use multiply blend to darken while preserving colors
+                dark_overlay = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
+                # Calculate brightness multiplier: 1.0 = full brightness, 0.2 = 20% brightness (minimum)
+                brightness = 1.0 - darkness_factor  # This gives us 0.2 minimum (20% visibility)
+                dark_overlay.fill((int(255 * brightness), int(255 * brightness), int(255 * brightness), 255))
+                bg_sprite_copy.blit(dark_overlay, (0, 0), special_flags=pygame.BLEND_MULT)
+                screen.blit(bg_sprite_copy, (0, 0))
             else:
-                # Bottom half: mid to bottom
-                local_ratio = (ratio - 0.5) * 2
-                r = int(bg_color_mid[0] * (1 - local_ratio) + bg_color_bottom[0] * local_ratio)
-                g = int(bg_color_mid[1] * (1 - local_ratio) + bg_color_bottom[1] * local_ratio)
-                b = int(bg_color_mid[2] * (1 - local_ratio) + bg_color_bottom[2] * local_ratio)
-            pygame.draw.line(self._bg_surface, (r, g, b), (0, y), (screen_width, y))
-        screen.blit(self._bg_surface, (0, 0))
+                screen.blit(bg_sprite, (0, 0))
+        else:
+            # Fallback to gradient background
+            self._bg_surface = pygame.Surface((screen_width, screen_height))
+            for y in range(screen_height):
+                ratio = y / screen_height
+                if ratio < 0.5:
+                    # Top half: top to mid
+                    local_ratio = ratio * 2
+                    r = int(bg_color_top[0] * (1 - local_ratio) + bg_color_mid[0] * local_ratio)
+                    g = int(bg_color_top[1] * (1 - local_ratio) + bg_color_mid[1] * local_ratio)
+                    b = int(bg_color_top[2] * (1 - local_ratio) + bg_color_mid[2] * local_ratio)
+                else:
+                    # Bottom half: mid to bottom
+                    local_ratio = (ratio - 0.5) * 2
+                    r = int(bg_color_mid[0] * (1 - local_ratio) + bg_color_bottom[0] * local_ratio)
+                    g = int(bg_color_mid[1] * (1 - local_ratio) + bg_color_bottom[1] * local_ratio)
+                    b = int(bg_color_mid[2] * (1 - local_ratio) + bg_color_bottom[2] * local_ratio)
+                pygame.draw.line(self._bg_surface, (r, g, b), (0, y), (screen_width, y))
+            screen.blit(self._bg_surface, (0, 0))
         
         # Special rendering for main map: green ground block
         if self.map_type == MAP_MAIN:
@@ -184,9 +214,9 @@ class Map:
             for block in self.blocks:
                 block.render(screen, camera_x, camera_y)
         
-        # Render buildings
-        for building in self.buildings:
-            building.render(screen, camera_x, camera_y)
+        # NOTE: Buildings and enemies are now rendered separately in game.py
+        # to ensure player is rendered on top (first plan)
+        # They are no longer rendered here to avoid double rendering
         
         # Render exits (visual indicator with glow effect)
         for exit_point in self.exits:
@@ -213,6 +243,5 @@ class Map:
                 (center_x + 6, center_y)
             ])
         
-        # Render enemies
-        for enemy in self.enemies:
-            enemy.render(screen, camera_x, camera_y)
+        # NOTE: Enemies are now rendered in game.py before player
+        # to ensure player is rendered on top (first plan)

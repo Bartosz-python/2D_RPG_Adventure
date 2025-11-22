@@ -17,7 +17,7 @@ GRID_HEIGHT = 22
 # Player settings
 PLAYER_SPEED = 300  # pixels per second
 PLAYER_JUMP_VELOCITY = -400
-GRAVITY = 1200
+GRAVITY = 800
 PLAYER_MAX_HP = 100
 PLAYER_START_X = 100
 # Player starts on top of ground (ground is at y=25, player height is 2 tiles, so y=23)

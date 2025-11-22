@@ -62,10 +62,6 @@ class Game:
                     if menu_handled:
                         return  # Menu handled the click, don't process other buttons
                 
-                # Check title bar buttons (includes close button)
-                title_bar_action = self.ui_manager.handle_title_bar_click(event.pos)
-                if title_bar_action:
-                    return title_bar_action  # Return action to main loop
         
         # Handle ESC key based on context
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
@@ -245,9 +241,6 @@ class Game:
         
         current_state = self.state_manager.get_state()
         
-        # Render title bar first (always visible on top)
-        self.ui_manager.render_title_bar(screen)
-        
         # Render tutorial
         if current_state == STATE_TUTORIAL:
             self.render_tutorial(screen)
@@ -264,10 +257,18 @@ class Game:
             else:
                 overlay_alpha = 0
             
-            # Render map (with day/night cycle for background)
+            # Render map background and blocks (with day/night cycle for background)
             self.current_map.render(screen, self.camera_x, self.camera_y, self.day_night_manager)
             
-            # Render player
+            # Render buildings (before player, so player appears on top)
+            for building in self.current_map.buildings:
+                building.render(screen, self.camera_x, self.camera_y)
+            
+            # Render enemies (before player, so player appears on top)
+            for enemy in self.current_map.enemies:
+                enemy.render(screen, self.camera_x, self.camera_y)
+            
+            # Render player (on first plan - after buildings and enemies)
             self.player.render(screen, self.camera_x, self.camera_y)
             
             # Apply day/night overlay

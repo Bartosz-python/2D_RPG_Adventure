@@ -23,12 +23,6 @@ class UIManager:
         self.slot_size = 50
         self.slot_padding = 5
         
-        # Title bar settings
-        self.title_bar_height = 35
-        self.title_bar_button_size = 30
-        self.title_bar_button_padding = 5
-        self.title_bar_buttons = {}  # Will store button rects
-        
         # Calculate UI positions based on screen mode
         self._calculate_positions()
     
@@ -42,14 +36,13 @@ class UIManager:
     def _calculate_positions_fullscreen(self):
         """Calculate UI positions for fullscreen mode - more spread out"""
         padding = 80
-        title_bar_offset = self.title_bar_height + 10
         
         # Top-left: Day counter (absolute position)
-        self.day_counter_pos = (padding, title_bar_offset + padding)
+        self.day_counter_pos = (padding, padding)
         
         # Top-left: Inventory (below day counter, absolute position)
         inventory_bar_width = (self.slot_size + self.slot_padding) * VISIBLE_SLOTS - self.slot_padding
-        self.inventory_pos = (padding, title_bar_offset + padding + 60)
+        self.inventory_pos = (padding, padding + 60)
         
         # Top-left: HP bar (below inventory, absolute position)
         hp_bar_width = 350
@@ -71,10 +64,9 @@ class UIManager:
     def _calculate_positions_windowed(self):
         """Calculate UI positions for windowed mode - compact, no overlap"""
         padding = 10
-        title_bar_offset = self.title_bar_height + 5
         
         # Top-left: Day counter (absolute position, very compact)
-        self.day_counter_pos = (padding, title_bar_offset + padding)
+        self.day_counter_pos = (padding, padding)
         
         # Top-left: Inventory (below day counter, compact)
         inventory_bar_width = (self.slot_size + self.slot_padding) * VISIBLE_SLOTS - self.slot_padding
@@ -105,16 +97,9 @@ class UIManager:
         if is_fullscreen is not None:
             self.is_fullscreen = is_fullscreen
         self._calculate_positions()
-        
-        # Title bar settings
-        self.title_bar_height = 35
-        self.title_bar_button_size = 30
-        self.title_bar_button_padding = 5
-        self.title_bar_buttons = {}  # Will store button rects
     
     def render(self, screen, player, day_night_manager):
         """Render all UI elements"""
-        # Note: Title bar is rendered separately in game.render() to be always visible
         self.render_inventory(screen, player)
         self.render_hp_bar(screen, player)  # Gold is now in HP bar
         self.render_equipment(screen, player)
@@ -228,60 +213,6 @@ class UIManager:
         # Gold text (right end of panel, aligned with inventory width)
         gold_x = x + bar_width + 10
         screen.blit(gold_text, (gold_x, y + 4))
-    
-    def render_title_bar(self, screen):
-        """Render title bar with window controls at the top"""
-        # Title bar background
-        title_bar_rect = pygame.Rect(0, 0, self.screen_width, self.title_bar_height)
-        pygame.draw.rect(screen, (40, 40, 50), title_bar_rect)
-        pygame.draw.line(screen, (60, 60, 70), (0, self.title_bar_height - 1), 
-                        (self.screen_width, self.title_bar_height - 1), 2)
-        
-        # Title text
-        title_text = self.small_font.render("Wild Eldoria", True, WHITE)
-        screen.blit(title_text, (10, (self.title_bar_height - title_text.get_height()) // 2))
-        
-        # Window control buttons (minimize, maximize, close) on the right
-        button_x = self.screen_width - (self.title_bar_button_size + self.title_bar_button_padding) * 3
-        button_y = (self.title_bar_height - self.title_bar_button_size) // 2
-        
-        # Minimize button
-        minimize_rect = pygame.Rect(button_x, button_y, self.title_bar_button_size, self.title_bar_button_size)
-        pygame.draw.rect(screen, (60, 60, 70), minimize_rect)
-        pygame.draw.rect(screen, (100, 100, 110), minimize_rect, 1)
-        # Minimize icon (horizontal line)
-        line_y = button_y + self.title_bar_button_size // 2
-        pygame.draw.line(screen, WHITE, (button_x + 8, line_y), 
-                        (button_x + self.title_bar_button_size - 8, line_y), 2)
-        self.title_bar_buttons['minimize'] = minimize_rect
-        
-        # Maximize/Restore button
-        button_x += self.title_bar_button_size + self.title_bar_button_padding
-        maximize_rect = pygame.Rect(button_x, button_y, self.title_bar_button_size, self.title_bar_button_size)
-        pygame.draw.rect(screen, (60, 60, 70), maximize_rect)
-        pygame.draw.rect(screen, (100, 100, 110), maximize_rect, 1)
-        # Maximize icon (two overlapping squares)
-        margin = 6
-        pygame.draw.rect(screen, WHITE, 
-                        (button_x + margin, button_y + margin, 
-                         self.title_bar_button_size - margin * 2, self.title_bar_button_size - margin * 2), 2)
-        pygame.draw.rect(screen, WHITE, 
-                        (button_x + margin + 3, button_y + margin + 3, 
-                         self.title_bar_button_size - margin * 2 - 3, self.title_bar_button_size - margin * 2 - 3), 2)
-        self.title_bar_buttons['maximize'] = maximize_rect
-        
-        # Close button
-        button_x += self.title_bar_button_size + self.title_bar_button_padding
-        close_rect = pygame.Rect(button_x, button_y, self.title_bar_button_size, self.title_bar_button_size)
-        pygame.draw.rect(screen, (200, 50, 50), close_rect)
-        pygame.draw.rect(screen, (255, 100, 100), close_rect, 1)
-        # X icon
-        margin = 8
-        pygame.draw.line(screen, WHITE, (button_x + margin, button_y + margin), 
-                        (button_x + self.title_bar_button_size - margin, button_y + self.title_bar_button_size - margin), 2)
-        pygame.draw.line(screen, WHITE, (button_x + self.title_bar_button_size - margin, button_y + margin), 
-                        (button_x + margin, button_y + self.title_bar_button_size - margin), 2)
-        self.title_bar_buttons['close'] = close_rect
     
     def render_equipment(self, screen, player):
         """Render equipped items bar (centered at bottom)"""
@@ -689,19 +620,6 @@ class UIManager:
             elif 'food_type' in button:
                 # Add food to inventory
                 player.inventory.add_item(button['food_type'])
-    
-    def handle_title_bar_click(self, pos):
-        """Handle clicks on title bar buttons. Returns action string or None"""
-        if not self.title_bar_buttons:
-            return None
-        
-        if 'minimize' in self.title_bar_buttons and self.title_bar_buttons['minimize'].collidepoint(pos):
-            return 'minimize'
-        elif 'maximize' in self.title_bar_buttons and self.title_bar_buttons['maximize'].collidepoint(pos):
-            return 'maximize'
-        elif 'close' in self.title_bar_buttons and self.title_bar_buttons['close'].collidepoint(pos):
-            return 'close'
-        return None
     
     def handle_click(self, pos, player):
         """Handle mouse clicks on UI elements"""

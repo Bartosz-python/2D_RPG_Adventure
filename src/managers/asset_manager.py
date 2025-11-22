@@ -11,16 +11,56 @@ class AssetManager:
         self.sprites = {}
         self.sounds = {}
         self.fonts = {}
-        self._load_placeholder_assets()
+        self._load_assets()
     
-    def _load_placeholder_assets(self):
-        # Placeholder sprites (will be replaced with actual images)
-        self.sprites['player'] = self._create_placeholder_surface(TILE_SIZE, TILE_SIZE * 2, BLUE)
-        self.sprites['enemy'] = self._create_placeholder_surface(TILE_SIZE, TILE_SIZE * 2, RED)
-        self.sprites['block_stone'] = self._create_placeholder_surface(TILE_SIZE, TILE_SIZE, GRAY)
-        self.sprites['block_dirt'] = self._create_placeholder_surface(TILE_SIZE, TILE_SIZE, (139, 69, 19))
-        self.sprites['coin'] = self._create_placeholder_surface(16, 16, YELLOW)
-        self.sprites['building'] = self._create_placeholder_surface(TILE_SIZE * 3, TILE_SIZE * 3, (100, 50, 0))
+    def _load_assets(self):
+        """Load all assets - try PNG files first, fallback to placeholders"""
+        # Load building sprites
+        self._load_building_sprites()
+        
+        # Load background
+        self._load_background()
+        
+        # Placeholder sprites (will be replaced with actual images if PNGs not found)
+        if 'player' not in self.sprites:
+            self.sprites['player'] = self._create_placeholder_surface(TILE_SIZE, TILE_SIZE, BLUE)
+        if 'enemy' not in self.sprites:
+            self.sprites['enemy'] = self._create_placeholder_surface(TILE_SIZE, TILE_SIZE, RED)
+        if 'block_stone' not in self.sprites:
+            self.sprites['block_stone'] = self._create_placeholder_surface(TILE_SIZE, TILE_SIZE, GRAY)
+        if 'block_dirt' not in self.sprites:
+            self.sprites['block_dirt'] = self._create_placeholder_surface(TILE_SIZE, TILE_SIZE, (139, 69, 19))
+        if 'coin' not in self.sprites:
+            self.sprites['coin'] = self._create_placeholder_surface(16, 16, YELLOW)
+    
+    def _load_building_sprites(self):
+        """Load building and campfire sprites from PNG files"""
+        building_types = ['bedroom', 'smith', 'tailor', 'witch', 'fireplace']
+        for building_type in building_types:
+            sprite_name = f'building_{building_type}'
+            # Try buildings folder first, then root sprites folder
+            sprite_path = os.path.join(SPRITES_PATH, 'buildings', f'{building_type}.png')
+            if not os.path.exists(sprite_path):
+                sprite_path = os.path.join(SPRITES_PATH, f'{building_type}.png')
+            self.load_sprite(sprite_name, sprite_path)
+    
+    def _load_background(self):
+        """Load background images from PNG files"""
+        # Load general background
+        bg_path = os.path.join(SPRITES_PATH, 'background.png')
+        if not os.path.exists(bg_path):
+            alt_path = os.path.join(ASSETS_PATH, 'background.png')
+            if os.path.exists(alt_path):
+                bg_path = alt_path
+        self.load_sprite('background', bg_path)
+        
+        # Load main base background (if exists, will be used for main map)
+        bg_main_path = os.path.join(SPRITES_PATH, 'background_main.png')
+        if not os.path.exists(bg_main_path):
+            bg_main_path = os.path.join(SPRITES_PATH, 'background_main_base.png')
+        if not os.path.exists(bg_main_path):
+            bg_main_path = os.path.join(ASSETS_PATH, 'background_main.png')
+        self.load_sprite('background_main', bg_main_path)
     
     def _create_placeholder_surface(self, width, height, color):
         """Create a colored rectangle as placeholder"""
