@@ -6,12 +6,13 @@ import pygame
 from src.config.settings import *
 
 class Block:
-    def __init__(self, x, y, block_type, asset_manager, destructible=True):
+    def __init__(self, x, y, block_type, asset_manager, destructible=True, is_platform=False):
         self.grid_x = x
         self.grid_y = y
         self.block_type = block_type
         self.destructible = destructible
         self.asset_manager = asset_manager
+        self.is_platform = is_platform  # One-way platform flag
         
         # Block HP system
         BLOCK_DURABILITY = {
@@ -22,21 +23,35 @@ class Block:
         self.max_hp = BLOCK_DURABILITY.get(block_type, 10) if destructible else float('inf')
         self.hp = self.max_hp
         
-        # Destroyable blocks are 2x2 size (extending to bottom-right)
-        # Non-destructible blocks remain 1x1
-        if destructible:
-            BLOCK_SIZE = TILE_SIZE * 2
+        # Platforms are always TILE_SIZE wide and thin (4 pixels thick)
+        if is_platform:
+            PLATFORM_WIDTH = TILE_SIZE * 2  # Same width as destroyable blocks
+            PLATFORM_HEIGHT = 4  # Thin platform
+            BLOCK_SIZE = PLATFORM_WIDTH
+            self.block_size = BLOCK_SIZE
+            # Create rect for collision (aligned to top line of block)
+            self.rect = pygame.Rect(
+                x * TILE_SIZE,
+                y * TILE_SIZE,
+                PLATFORM_WIDTH,
+                PLATFORM_HEIGHT
+            )
         else:
-            BLOCK_SIZE = TILE_SIZE
-        
-        # Create rect for collision
-        self.rect = pygame.Rect(
-            x * TILE_SIZE,
-            y * TILE_SIZE,
-            BLOCK_SIZE,
-            BLOCK_SIZE
-        )
-        self.block_size = BLOCK_SIZE  # Store for rendering
+            # Destroyable blocks are 2x2 size (extending to bottom-right)
+            # Non-destructible blocks remain 1x1
+            if destructible:
+                BLOCK_SIZE = TILE_SIZE * 2
+            else:
+                BLOCK_SIZE = TILE_SIZE
+            
+            # Create rect for collision
+            self.rect = pygame.Rect(
+                x * TILE_SIZE,
+                y * TILE_SIZE,
+                BLOCK_SIZE,
+                BLOCK_SIZE
+            )
+            self.block_size = BLOCK_SIZE  # Store for rendering
     
     def take_damage(self, damage):
         """Apply damage to block, returns True if block is destroyed"""
@@ -51,6 +66,17 @@ class Block:
         """Render block"""
         screen_x = self.rect.x - camera_x
         screen_y = self.rect.y - camera_y
+        
+        # Render platform differently
+        if self.is_platform:
+            # Draw platform as a thin horizontal line
+            platform_color = (100, 150, 200)  # Light blue color for platforms
+            platform_rect = pygame.Rect(screen_x, screen_y, self.rect.width, self.rect.height)
+            pygame.draw.rect(screen, platform_color, platform_rect)
+            # Add a subtle highlight on top
+            pygame.draw.line(screen, (150, 200, 255), (screen_x, screen_y), 
+                           (screen_x + self.rect.width, screen_y), 1)
+            return
         
         # Use stored block size
         BLOCK_SIZE = self.block_size

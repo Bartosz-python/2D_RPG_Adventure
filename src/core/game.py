@@ -27,6 +27,9 @@ class Game:
         self.ui_manager = UIManager(self.map_manager)
         self.enemy_spawn_manager = EnemySpawnManager()
         
+        # Tutorial play button
+        self.tutorial_play_button = None
+        
         # Load initial map first
         self.current_map = self.map_manager.load_map(MAP_MAIN)
         
@@ -57,6 +60,12 @@ class Game:
         # Handle mouse clicks
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left click
+                # Check tutorial Play button
+                if current_state == STATE_TUTORIAL:
+                    if self.tutorial_play_button and self.tutorial_play_button.collidepoint(event.pos):
+                        self.state_manager.set_state(STATE_WEAPON_SELECTION)
+                        return None
+                
                 # Check title bar buttons first
                 title_bar_action = self.ui_manager.handle_title_bar_click(event.pos)
                 if title_bar_action:
@@ -81,6 +90,39 @@ class Game:
                     self.player.attack_block(event.pos, self.camera_x, self.camera_y, self.current_map)
                     # Also trigger normal attack for enemies (handled in player.update)
                     self.player.keys['attack'] = True
+        
+        # Handle platform placement (Q key) in exploration map only
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_q:
+            # Disable building completely on main map
+            if current_state == STATE_MAIN_MAP:
+                return None
+            
+            if current_state == STATE_EXPLORATION:
+                # Get mouse position in world coordinates
+                mouse_x, mouse_y = pygame.mouse.get_pos()
+                world_x = mouse_x + self.camera_x
+                world_y = mouse_y + self.camera_y
+                
+                # Check if within placement range (1.5x mining radius)
+                player_center_x, player_center_y = self.player.rect.center
+                distance = ((world_x - player_center_x)**2 + (world_y - player_center_y)**2)**0.5
+                mining_radius = TILE_SIZE * 4.5  # Base mining radius
+                placement_radius = mining_radius * 1.5  # 1.5x mining radius
+                
+                if distance <= placement_radius:
+                    # Align to block grid (top line of block)
+                    grid_x = world_x // TILE_SIZE
+                    grid_y = world_y // TILE_SIZE
+                    
+                    # Disable building within 10 blocks of the top edge
+                    if grid_y < 10:
+                        return None
+                    
+                    # Check if player has dirt in inventory
+                    if self.player.inventory.has_item('dirt', 1):
+                        # Place platform and consume dirt
+                        if self.current_map.add_platform(grid_x, grid_y):
+                            self.player.inventory.remove_item('dirt', 1)
         
         # Handle ESC key based on context
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
@@ -191,7 +233,9 @@ class Game:
         
         # Update player
         elif current_state in [STATE_MAIN_MAP, STATE_EXPLORATION]:
-            self.player.update(dt, self.current_map)
+            # Disable movement if menu is open on main map
+            menu_open = (current_state == STATE_MAIN_MAP and self.ui_manager.active_menu is not None)
+            self.player.update(dt, self.current_map, menu_open=menu_open)
             
             # Update enemies
             self.current_map.update_enemies(dt, self.player)
@@ -338,6 +382,10 @@ class Game:
             # Render player
             self.player.render(screen, self.camera_x, self.camera_y)
             
+            # Render "Interact" text if player is near a building (only on main map)
+            if current_state == STATE_MAIN_MAP:
+                self.render_interact_prompt(screen)
+            
             # Apply day/night overlay
             if overlay_alpha > 0:
                 overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -347,7 +395,7 @@ class Game:
             
             # Render UI (always on top)
             depth_level = self.get_depth_level() if current_state == STATE_EXPLORATION else 0
-            self.ui_manager.render(screen, self.player, self.day_night_manager, depth_level)
+            self.ui_manager.render(screen, self.player, self.day_night_manager, depth_level, current_state)
     
     def render_mining_radius(self, screen):
         """Render semi-transparent gray circle showing mining radius on exploration map"""
@@ -368,6 +416,38 @@ class Game:
         # Blit the circle surface to screen
         screen.blit(radius_surface, (player_center_x - mining_radius, player_center_y - mining_radius))
     
+    def render_interact_prompt(self, screen):
+        """Render 'Interact' text above player when near a building"""
+        # Check if player is near any building
+        player_near_building = False
+        for building in self.current_map.buildings:
+            if building.is_player_near(self.player.rect):
+                player_near_building = True
+                break
+        
+        if player_near_building:
+            # Calculate screen position for text (above player)
+            player_screen_x = self.player.rect.centerx - self.camera_x
+            player_screen_y = self.player.rect.top - self.camera_y - 20  # 20 pixels above player
+            
+            # Create small font for interact text
+            small_font = pygame.font.Font(None, 24)
+            interact_text = small_font.render("Interact", True, WHITE)
+            
+            # Draw background for text (semi-transparent)
+            text_bg_rect = pygame.Rect(
+                player_screen_x - interact_text.get_width() // 2 - 5,
+                player_screen_y - 2,
+                interact_text.get_width() + 10,
+                interact_text.get_height() + 4
+            )
+            bg_surface = pygame.Surface((text_bg_rect.width, text_bg_rect.height), pygame.SRCALPHA)
+            bg_surface.fill((0, 0, 0, 150))  # Semi-transparent black
+            screen.blit(bg_surface, text_bg_rect)
+            
+            # Draw text centered above player
+            screen.blit(interact_text, (player_screen_x - interact_text.get_width() // 2, player_screen_y))
+    
     def render_tutorial(self, screen):
         """Render tutorial screen"""
         # Background
@@ -384,7 +464,7 @@ class Game:
             "Press left mouse button to attack or destroy blocks",
             "Press ESC to quit",
             "",
-            "Press ENTER to continue to weapon selection",
+            "Click the Play button below to continue to weapon selection",
             "Or complete your first quest to continue!"
         ]
         
@@ -394,6 +474,24 @@ class Game:
             text = small_font.render(instruction, True, WHITE)
             screen.blit(text, (SCREEN_WIDTH // 2 - text.get_width() // 2, y))
             y += 30
+        
+        # Play button
+        button_width = 200
+        button_height = 50
+        button_x = SCREEN_WIDTH // 2 - button_width // 2
+        button_y = y + 40
+        play_button_rect = pygame.Rect(button_x, button_y, button_width, button_height)
+        self.tutorial_play_button = play_button_rect
+        
+        # Draw Play button
+        pygame.draw.rect(screen, (80, 150, 80), play_button_rect)
+        pygame.draw.rect(screen, (100, 200, 100), play_button_rect, 3)
+        
+        button_font = pygame.font.Font(None, 32)
+        play_text = button_font.render("Play", True, WHITE)
+        play_text_x = button_x + button_width // 2 - play_text.get_width() // 2
+        play_text_y = button_y + button_height // 2 - play_text.get_height() // 2
+        screen.blit(play_text, (play_text_x, play_text_y))
     
     def render_weapon_selection(self, screen):
         """Render weapon selection screen"""

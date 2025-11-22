@@ -57,7 +57,7 @@ class UIManager:
         self.title_bar_button_padding = 5
         self.title_bar_buttons = {}  # Will store button rects
     
-    def render(self, screen, player, day_night_manager, depth_level=0):
+    def render(self, screen, player, day_night_manager, depth_level=0, current_state=None):
         """Render all UI elements"""
         # Note: Title bar is rendered separately in game.render() to be always visible
         self.render_inventory(screen, player)
@@ -67,6 +67,11 @@ class UIManager:
         self.render_day_counter(screen, day_night_manager)
         self.render_depth_level(screen, depth_level)
         self.render_exit_button(screen)
+        
+        # Render platform placement text on exploration map
+        from src.config.settings import STATE_EXPLORATION
+        if current_state == STATE_EXPLORATION:
+            self.render_platform_text(screen)
         
         # Render active menu if any
         if self.active_menu:
@@ -322,6 +327,31 @@ class UIManager:
         
         screen.blit(stats_text, (stats_x, y))
     
+    def render_platform_text(self, screen):
+        """Render platform placement instruction above equipment bar"""
+        # Position above stats (which is above equipment bar)
+        x, y = self.stats_pos
+        text_y = y - 30  # Above stats
+        
+        platform_text = self.small_font.render(
+            "Press Q consume 1 dirt and place a platform",
+            True, WHITE
+        )
+        
+        # Center the text
+        text_x = SCREEN_WIDTH // 2 - platform_text.get_width() // 2
+        
+        # Background panel
+        panel_width = platform_text.get_width() + 20
+        panel_height = platform_text.get_height() + 10
+        panel_rect = pygame.Rect(text_x - 10, text_y - 5, panel_width, panel_height)
+        panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+        panel_surface.fill((40, 40, 40, 220))
+        screen.blit(panel_surface, (text_x - 10, text_y - 5))
+        pygame.draw.rect(screen, UI_BORDER_COLOR, panel_rect, 2)
+        
+        screen.blit(platform_text, (text_x, text_y))
+    
     def render_day_counter(self, screen, day_night_manager):
         """Render survival day counter"""
         day = day_night_manager.get_day_count()
@@ -481,6 +511,40 @@ class UIManager:
             })
             
             y_offset += 60
+        
+        # Add "Sell all resources" button
+        y_offset += 20  # Add some spacing
+        sell_button_y = y + y_offset
+        sell_button_rect = pygame.Rect(x + 30, sell_button_y, menu_width - 60, 50)
+        
+        # Count resources
+        dirt_count = player.inventory.get_item_count('dirt')
+        stone_count = player.inventory.get_item_count('stone')
+        total_gold = dirt_count * 1 + stone_count * 2
+        
+        # Check if player has resources to sell
+        has_resources = dirt_count > 0 or stone_count > 0
+        button_color = (120, 100, 80) if has_resources else (80, 80, 80)
+        border_color = (200, 150, 100) if has_resources else (100, 100, 100)
+        
+        # Draw button
+        pygame.draw.rect(screen, button_color, sell_button_rect)
+        pygame.draw.rect(screen, border_color, sell_button_rect, 2)
+        
+        # Button text
+        sell_text = f"Sell all resources ({total_gold}g)"
+        if not has_resources:
+            sell_text = "Sell all resources (No resources)"
+        text_color = WHITE if has_resources else LIGHT_GRAY
+        text_surface = self.small_font.render(sell_text, True, text_color)
+        screen.blit(text_surface, (x + 50, sell_button_y + 15))
+        
+        # Store button info
+        self.sell_resources_button = {
+            'rect': sell_button_rect,
+            'has_resources': has_resources,
+            'total_gold': total_gold
+        }
     
     def _render_tailor_menu(self, screen, x, y, player):
         """Render tailor (armor) menu"""
@@ -632,6 +696,8 @@ class UIManager:
         self.active_menu = None
         self.upgrade_buttons = []
         self.close_button_rect = None
+        if hasattr(self, 'sell_resources_button'):
+            self.sell_resources_button = None
     
     def handle_menu_click(self, pos, player):
         """Handle clicks on menu buttons"""
@@ -648,6 +714,13 @@ class UIManager:
             for button in self.upgrade_buttons:
                 if button['rect'].collidepoint(pos) and button.get('can_afford', False):
                     self._purchase_upgrade(button, player)
+                    return True
+        
+        # Check "Sell all resources" button (only in smith menu)
+        if self.active_menu == BUILDING_SMITH:
+            if hasattr(self, 'sell_resources_button') and self.sell_resources_button:
+                if self.sell_resources_button['rect'].collidepoint(pos) and self.sell_resources_button.get('has_resources', False):
+                    self._sell_all_resources(player)
                     return True
         
         return False
@@ -679,6 +752,25 @@ class UIManager:
             elif 'food_type' in button:
                 # Add food to inventory
                 player.inventory.add_item(button['food_type'])
+    
+    def _sell_all_resources(self, player):
+        """Sell all dirt and stone resources"""
+        # Get counts
+        dirt_count = player.inventory.get_item_count('dirt')
+        stone_count = player.inventory.get_item_count('stone')
+        
+        # Calculate total gold
+        total_gold = dirt_count * 1 + stone_count * 2
+        
+        # Remove all dirt and stone
+        if dirt_count > 0:
+            player.inventory.remove_item('dirt', dirt_count)
+        if stone_count > 0:
+            player.inventory.remove_item('stone', stone_count)
+        
+        # Add gold to player
+        if total_gold > 0:
+            player.add_gold(total_gold)
     
     def handle_title_bar_click(self, pos):
         """Handle clicks on title bar buttons. Returns action string or None"""

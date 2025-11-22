@@ -61,6 +61,28 @@ class Map:
         block = Block(x, y, block_type, self.asset_manager, destructible)
         self.blocks.append(block)
     
+    def add_platform(self, x, y):
+        """Add one-way platform at grid coordinates"""
+        # Check if spot is empty (no blocks at this position)
+        if self.is_spot_empty(x * TILE_SIZE, y * TILE_SIZE):
+            platform = Block(x, y, 'stone', self.asset_manager, destructible=False, is_platform=True)
+            self.blocks.append(platform)
+            return True
+        return False
+    
+    def is_spot_empty(self, world_x, world_y):
+        """Check if a world coordinate position is empty (no blocks)"""
+        # Check a small area around the position (platform width and a bit of height)
+        # Platform is TILE_SIZE * 2 wide and 4 pixels tall
+        check_rect = pygame.Rect(world_x, world_y, TILE_SIZE * 2, TILE_SIZE)
+        for block in self.blocks:
+            # Skip platforms when checking (allow placing platforms near other platforms)
+            if block.is_platform:
+                continue
+            if block.rect.colliderect(check_rect):
+                return False
+        return True
+    
     def remove_block(self, block):
         """Remove block from map"""
         if block in self.blocks:

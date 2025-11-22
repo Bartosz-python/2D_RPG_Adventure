@@ -71,26 +71,27 @@ class Player:
             if event.button == 1:  # Left mouse button
                 self.keys['attack'] = False
     
-    def update(self, dt, current_map):
+    def update(self, dt, current_map, menu_open=False):
         """Update player state"""
         # Get current key states for continuous movement
         keys = pygame.key.get_pressed()
         
-        # Horizontal movement
+        # Horizontal movement (disabled if menu is open)
         self.velocity_x = 0
-        if keys[pygame.K_a] or keys[pygame.K_LEFT] or self.keys['left']:
-            self.velocity_x = -PLAYER_SPEED
-            self.facing_right = False
-        elif keys[pygame.K_d] or keys[pygame.K_RIGHT] or self.keys['right']:
-            self.velocity_x = PLAYER_SPEED
-            self.facing_right = True
+        if not menu_open:
+            if keys[pygame.K_a] or keys[pygame.K_LEFT] or self.keys['left']:
+                self.velocity_x = -PLAYER_SPEED
+                self.facing_right = False
+            elif keys[pygame.K_d] or keys[pygame.K_RIGHT] or self.keys['right']:
+                self.velocity_x = PLAYER_SPEED
+                self.facing_right = True
         
         # Apply horizontal movement
         self.rect.x += self.velocity_x * dt
         self.handle_collision(current_map, 'x')
         
-        # Jumping (only use event-based, not continuous key check)
-        if self.keys['jump'] and self.on_ground:
+        # Jumping (only use event-based, not continuous key check, disabled if menu is open)
+        if not menu_open and self.keys['jump'] and self.on_ground:
             self.velocity_y = PLAYER_JUMP_VELOCITY
             self.on_ground = False
             self.keys['jump'] = False  # Reset jump key to prevent continuous jumping
@@ -133,7 +134,32 @@ class Player:
         if not collided_blocks:
             return
         
+        # Check if S key is held (for falling through platforms)
+        keys = pygame.key.get_pressed()
+        holding_s = keys[pygame.K_s] or keys[pygame.K_DOWN]
+        
         for block in collided_blocks:
+            # Handle one-way platforms
+            if block.is_platform:
+                if axis == 'x':
+                    # Platforms don't block horizontal movement
+                    continue
+                elif axis == 'y':
+                    # Platforms only block from above
+                    if self.velocity_y > 0:  # Falling
+                        # Allow falling through if S is held
+                        if holding_s:
+                            continue
+                        # Block from above - align player bottom to platform top
+                        self.rect.bottom = block.rect.top
+                        self.velocity_y = 0
+                        self.on_ground = True
+                    elif self.velocity_y < 0:  # Jumping up
+                        # Allow passing through from below
+                        continue
+                continue
+            
+            # Regular block collision
             if axis == 'x':
                 if self.velocity_x > 0:  # Moving right
                     self.rect.right = block.rect.left
@@ -203,23 +229,31 @@ class Player:
         
         # Find the top-left block at this grid position
         block = current_map.get_block_at(grid_x, grid_y)
-        if block and block.destructible:
-            # Apply damage to the block
-            BLOCK_BASE_DAMAGE = 8
-            damage = BLOCK_BASE_DAMAGE
-            if block.take_damage(damage):
-                # Block destroyed
-                import random
-                # Random chance to get gold from blocks (10% chance)
-                if random.random() < 0.1:
-                    gold_amount = random.randint(1, 5)
-                    self.add_gold(gold_amount)
-                
-                # Add block to inventory and remove from map
-                if self.inventory.add_item(block.block_type):
-                    current_map.remove_block(block)
+        if block:
+            # Handle platform destruction
+            if block.is_platform:
+                # Platforms are destroyed instantly
+                current_map.remove_block(block)
                 return True
-            return True  # Block damaged but not destroyed
+            
+            # Handle regular destructible blocks
+            if block.destructible:
+                # Apply damage to the block
+                BLOCK_BASE_DAMAGE = 8
+                damage = BLOCK_BASE_DAMAGE
+                if block.take_damage(damage):
+                    # Block destroyed
+                    import random
+                    # Random chance to get gold from blocks (10% chance)
+                    if random.random() < 0.1:
+                        gold_amount = random.randint(1, 5)
+                        self.add_gold(gold_amount)
+                    
+                    # Add block to inventory and remove from map
+                    if self.inventory.add_item(block.block_type):
+                        current_map.remove_block(block)
+                    return True
+                return True  # Block damaged but not destroyed
         return False
     
     def start_destroying_block(self, current_map):

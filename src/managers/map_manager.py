@@ -66,31 +66,53 @@ class MapManager:
         map_height = 40 + (SCREEN_HEIGHT * 4) // TILE_SIZE
         game_map = Map(map_width, map_height, self.asset_manager, map_type=MAP_EXPLORATION)
         
-        # Ground level (non-destructible base)
-        ground_y = 35
-        for x in range(map_width):
-            for y in range(ground_y, 40):
-                game_map.add_block(x, y, 'stone', destructible=False)
-        
         # Create platform of destroyable square blocks
         # Platform starts at y=30 and goes up a few rows
         platform_start_y = 30
         platform_height = 5  # 5 rows of blocks
         
+        # Player spawns at y=33 in exploration map (from game.py check_map_transitions)
+        # Depth level = (block_y - spawn_y) / TILE_SIZE = (y - 33)
+        spawn_y = 33
+        
+        # Helper function to get block type based on depth
+        def get_block_type_by_depth(block_y):
+            """Get block type based on depth level with probability ratios"""
+            import random
+            depth = block_y - spawn_y
+            
+            if depth <= 10:
+                # Above depth 10: 95% dirt, 5% stone
+                return 'dirt' if random.random() < 0.95 else 'stone'
+            elif depth <= 25:
+                # Depth 11-25: 80% dirt, 20% stone
+                return 'dirt' if random.random() < 0.80 else 'stone'
+            elif depth <= 70:
+                # Depth 26-70: 20% dirt, 80% stone
+                return 'dirt' if random.random() < 0.20 else 'stone'
+            else:
+                # Below depth 71: 2% dirt, 98% stone
+                return 'dirt' if random.random() < 0.02 else 'stone'
+        
         # Fill entire platform with destroyable blocks
         # Blocks are 2x2 size, so place them at 2x2 intervals (every other grid position)
         for x in range(0, map_width, 2):  # Step by 2 for 2x2 blocks
             for y in range(platform_start_y, platform_start_y + platform_height, 2):  # Step by 2
-                # Use alternating block types for visual variety
-                block_type = 'stone' if ((x // 2) + (y // 2)) % 2 == 0 else 'dirt'
+                block_type = get_block_type_by_depth(y)
+                game_map.add_block(x, y, block_type, destructible=True)
+        
+        # Fill the gap left by removing indestructible ground (y=35-40) with destroyable blocks
+        # Blocks are 2x2 size, so place them at 2x2 intervals
+        for x in range(0, map_width, 2):  # Step by 2 for 2x2 blocks
+            for y in range(36, 40, 2):  # Fill y=36 and y=38 (2x2 blocks cover 2 rows each)
+                block_type = get_block_type_by_depth(y)
                 game_map.add_block(x, y, block_type, destructible=True)
         
         # Fill new depth (from y=40 to bottom) with destroyable blocks
         # Blocks are 2x2 size, so place them at 2x2 intervals
         for x in range(0, map_width, 2):  # Step by 2 for 2x2 blocks
             for y in range(40, map_height - 1, 2):  # Step by 2, leave last row for dark block
-                # Use alternating block types for visual variety
-                block_type = 'stone' if ((x // 2) + (y // 2)) % 2 == 0 else 'dirt'
+                block_type = get_block_type_by_depth(y)
                 game_map.add_block(x, y, block_type, destructible=True)
         
         # Add unbreakable dark block across the whole bottom edge
