@@ -27,8 +27,12 @@ class Game:
         self.ui_manager = UIManager(self.map_manager)
         self.enemy_spawn_manager = EnemySpawnManager()
         
-        # Tutorial play button
+        # Tutorial buttons
         self.tutorial_play_button = None
+        self.tutorial_exit_button = None
+        self.quit_prompt_open = False
+        self.quit_prompt_yes_button = None
+        self.quit_prompt_no_button = None
         
         # Load initial map first
         self.current_map = self.map_manager.load_map(MAP_MAIN)
@@ -52,6 +56,9 @@ class Game:
         # Camera offset
         self.camera_x = 0
         self.camera_y = 0
+        
+        # Exploration timer (10 minutes = 600 seconds)
+        self.exploration_timer = 600.0  # Countdown timer in seconds
     
     def handle_event(self, event):
         """Handle pygame events"""
@@ -60,22 +67,55 @@ class Game:
         # Handle mouse clicks
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left click
-                # Check tutorial Play button
+                # Check tutorial buttons
                 if current_state == STATE_TUTORIAL:
-                    if self.tutorial_play_button and self.tutorial_play_button.collidepoint(event.pos):
-                        self.state_manager.set_state(STATE_WEAPON_SELECTION)
+                    # Check quit prompt buttons first if prompt is open
+                    if self.quit_prompt_open:
+                        if self.quit_prompt_yes_button and self.quit_prompt_yes_button.collidepoint(event.pos):
+                            # Quit the game
+                            self.running = False
+                            return 'quit'
+                        elif self.quit_prompt_no_button and self.quit_prompt_no_button.collidepoint(event.pos):
+                            # Close the prompt
+                            self.quit_prompt_open = False
+                            return None
+                    else:
+                        # Check Play button
+                        if self.tutorial_play_button and self.tutorial_play_button.collidepoint(event.pos):
+                            # Transition directly to main map
+                            self.state_manager.set_state(STATE_MAIN_MAP)
+                            # Position player at top edge of green block (center x, on ground level)
+                            # Ground is at y=25, player height is 2 tiles, so position at y=23
+                            self.player.rect.x = (self.current_map.width * TILE_SIZE) // 2
+                            self.player.rect.y = 23 * TILE_SIZE  # Top edge of green block
+                            # Reset velocity to prevent issues
+                            self.player.velocity_x = 0
+                            self.player.velocity_y = 0
+                            return None
+                        # Check Exit button
+                        elif self.tutorial_exit_button and self.tutorial_exit_button.collidepoint(event.pos):
+                            self.quit_prompt_open = True
+                            return None
+                
+                # Check quit prompt buttons first if prompt is open
+                if self.quit_prompt_open:
+                    if self.quit_prompt_yes_button and self.quit_prompt_yes_button.collidepoint(event.pos):
+                        # Return to tutorial screen (main menu)
+                        self.quit_prompt_open = False
+                        self.state_manager.set_state(STATE_TUTORIAL)
+                        # Close any open menus
+                        if self.ui_manager.active_menu:
+                            self.ui_manager.close_menu()
+                        return None
+                    elif self.quit_prompt_no_button and self.quit_prompt_no_button.collidepoint(event.pos):
+                        # Close the prompt
+                        self.quit_prompt_open = False
                         return None
                 
                 # Check title bar buttons first
                 title_bar_action = self.ui_manager.handle_title_bar_click(event.pos)
                 if title_bar_action:
                     return title_bar_action  # Return action to main loop
-                
-                # Check exit button
-                if hasattr(self.ui_manager, 'exit_button_rect') and self.ui_manager.exit_button_rect:
-                    if self.ui_manager.exit_button_rect.collidepoint(event.pos):
-                        self.running = False
-                        return 'quit'
                 
                 # Check menu buttons
                 if self.ui_manager.active_menu:
@@ -129,22 +169,16 @@ class Game:
             # Close active menu if one is open
             if self.ui_manager.active_menu:
                 self.ui_manager.close_menu()
-            # Allow ESC to go back from weapon selection to tutorial
-            elif current_state == STATE_WEAPON_SELECTION:
-                self.state_manager.set_state(STATE_TUTORIAL)
-            # Only quit if in gameplay or tutorial (and no menu open)
-            elif current_state in [STATE_MAIN_MAP, STATE_EXPLORATION, STATE_TUTORIAL]:
-                self.running = False
+            # Show quit to main menu prompt if in gameplay (and no menu open)
+            elif current_state in [STATE_MAIN_MAP, STATE_EXPLORATION]:
+                if not self.quit_prompt_open:
+                    self.quit_prompt_open = True
         
         # Handle state-specific events
         if event.type == pygame.KEYDOWN:
             if current_state == STATE_TUTORIAL:
-                # Handle ENTER to progress from tutorial
+                # Handle ENTER to progress from tutorial to main map
                 if event.key == pygame.K_RETURN:
-                    self.state_manager.set_state(STATE_WEAPON_SELECTION)
-                # Debug: Press P to skip directly to gameplay
-                elif event.key == pygame.K_p:
-                    self.player.equip_weapon('sword')
                     self.state_manager.set_state(STATE_MAIN_MAP)
                     # Position player at top edge of green block (center x, on ground level)
                     # Ground is at y=25, player height is 2 tiles, so position at y=23
@@ -155,47 +189,12 @@ class Game:
                     self.player.velocity_y = 0
                 else:
                     self.quest_manager.handle_tutorial_input(event, self.player)
-            elif current_state == STATE_WEAPON_SELECTION:
-                self.handle_weapon_selection(event)
             elif current_state in [STATE_MAIN_MAP, STATE_EXPLORATION]:
                 self.handle_interaction(event)
         
         # Always pass input events to player when in gameplay (both KEYDOWN and KEYUP)
         if current_state in [STATE_MAIN_MAP, STATE_EXPLORATION]:
             self.player.handle_input(event)
-    
-    def handle_weapon_selection(self, event):
-        """Handle weapon selection after tutorial"""
-        if event.key == pygame.K_1:
-            self.player.equip_weapon('sword')
-            self.state_manager.set_state(STATE_MAIN_MAP)
-            # Position player at top edge of green block (center x, on ground level)
-            # Ground is at y=25, player height is 2 tiles, so position at y=23
-            self.player.rect.x = (self.current_map.width * TILE_SIZE) // 2
-            self.player.rect.y = 23 * TILE_SIZE  # Top edge of green block
-            # Reset velocity to prevent issues
-            self.player.velocity_x = 0
-            self.player.velocity_y = 0
-        elif event.key == pygame.K_2:
-            self.player.equip_weapon('wand')
-            self.state_manager.set_state(STATE_MAIN_MAP)
-            # Position player at top edge of green block (center x, on ground level)
-            # Ground is at y=25, player height is 2 tiles, so position at y=23
-            self.player.rect.x = (self.current_map.width * TILE_SIZE) // 2
-            self.player.rect.y = 23 * TILE_SIZE  # Top edge of green block
-            # Reset velocity to prevent issues
-            self.player.velocity_x = 0
-            self.player.velocity_y = 0
-        elif event.key == pygame.K_3:
-            self.player.equip_weapon('bow')
-            self.state_manager.set_state(STATE_MAIN_MAP)
-            # Position player at top edge of green block (center x, on ground level)
-            # Ground is at y=25, player height is 2 tiles, so position at y=23
-            self.player.rect.x = (self.current_map.width * TILE_SIZE) // 2
-            self.player.rect.y = 23 * TILE_SIZE  # Top edge of green block
-            # Reset velocity to prevent issues
-            self.player.velocity_x = 0
-            self.player.velocity_y = 0
     
     def handle_interaction(self, event):
         """Handle player interactions with environment"""
@@ -229,7 +228,15 @@ class Game:
         # Update tutorial quest
         if current_state == STATE_TUTORIAL:
             if self.quest_manager.update_tutorial(self.player, dt):
-                self.state_manager.set_state(STATE_WEAPON_SELECTION)
+                # Transition directly to main map
+                self.state_manager.set_state(STATE_MAIN_MAP)
+                # Position player at top edge of green block (center x, on ground level)
+                # Ground is at y=25, player height is 2 tiles, so position at y=23
+                self.player.rect.x = (self.current_map.width * TILE_SIZE) // 2
+                self.player.rect.y = 23 * TILE_SIZE  # Top edge of green block
+                # Reset velocity to prevent issues
+                self.player.velocity_x = 0
+                self.player.velocity_y = 0
         
         # Update player
         elif current_state in [STATE_MAIN_MAP, STATE_EXPLORATION]:
@@ -252,6 +259,13 @@ class Game:
             
             # Update camera
             self.update_camera()
+            
+            # Update exploration timer (only on exploration map)
+            if current_state == STATE_EXPLORATION:
+                self.exploration_timer -= dt
+                if self.exploration_timer <= 0:
+                    # Timer ran out - kill player and respawn at main map
+                    self._handle_timer_expired()
             
             # Check for map transitions
             self.check_map_transitions()
@@ -323,10 +337,13 @@ class Game:
             if exit_point == "exploration":
                 self.current_map = self.map_manager.load_map(MAP_EXPLORATION)
                 self.state_manager.set_state(STATE_EXPLORATION)
+                # Reset exploration timer when entering exploration map
+                self.exploration_timer = 600.0  # 10 minutes
                 # Position player on ground in exploration map
                 # Ground is at y=35, player height is 2 tiles, so position at y=33
-                self.player.rect.x = 100
-                spawn_y = 33 * TILE_SIZE
+                # Moved 2.5 blocks higher (was 33, now 30.5)
+                self.player.rect.x = 100 + 256
+                spawn_y = (33 - 5) * TILE_SIZE  # 2.5 blocks higher
                 self.player.rect.y = spawn_y
                 # Update spawn position for depth calculation
                 self.player_spawn_y = spawn_y
@@ -347,6 +364,37 @@ class Game:
                 self.player.velocity_x = 0
                 self.player.velocity_y = 0
     
+    def _handle_timer_expired(self):
+        """Handle timer expiration - kill player and respawn at main map with 90% resources"""
+        import math
+        
+        # Reduce all inventory items to 90% (rounded up)
+        all_items = self.player.inventory.get_all_items()
+        for item_type, count in all_items:
+            if item_type and count > 0:
+                # Calculate 90% rounded up
+                new_count = math.ceil(count * 0.9)
+                # Remove the difference
+                to_remove = count - new_count
+                if to_remove > 0:
+                    self.player.inventory.remove_item(item_type, to_remove)
+        
+        # Respawn player at main map
+        self.current_map = self.map_manager.load_map(MAP_MAIN)
+        self.state_manager.set_state(STATE_MAIN_MAP)
+        # Position player on ground in main map (center)
+        # Ground is at y=25, player height is 2 tiles, so position at y=23
+        self.player.rect.x = (self.current_map.width * TILE_SIZE) // 2
+        spawn_y = 23 * TILE_SIZE
+        self.player.rect.y = spawn_y
+        # Update spawn position for depth calculation
+        self.player_spawn_y = spawn_y
+        # Reset velocity to prevent issues
+        self.player.velocity_x = 0
+        self.player.velocity_y = 0
+        # Reset HP to full (or you could set to 1 if you want them to be low)
+        self.player.hp = self.player.max_hp
+    
     def render(self, screen):
         """Render game"""
         screen.fill(BLACK)
@@ -360,10 +408,6 @@ class Game:
         if current_state == STATE_TUTORIAL:
             self.render_tutorial(screen)
         
-        # Render weapon selection
-        elif current_state == STATE_WEAPON_SELECTION:
-            self.render_weapon_selection(screen)
-        
         # Render gameplay
         elif current_state in [STATE_MAIN_MAP, STATE_EXPLORATION]:
             # Apply day/night overlay
@@ -373,7 +417,9 @@ class Game:
                 overlay_alpha = 0
             
             # Render map (with day/night cycle for background)
-            self.current_map.render(screen, self.camera_x, self.camera_y, self.day_night_manager)
+            # Render buildings that should be behind the player first
+            self.current_map.render(screen, self.camera_x, self.camera_y, self.day_night_manager, 
+                                   render_buildings=True, exclude_buildings=[BUILDING_SMITH, BUILDING_BEDROOM])
             
             # Render mining radius indicator on exploration map
             if current_state == STATE_EXPLORATION:
@@ -381,6 +427,12 @@ class Game:
             
             # Render player
             self.player.render(screen, self.camera_x, self.camera_y)
+            
+            # Render smith and bedroom buildings after player (so player appears in front)
+            if current_state == STATE_MAIN_MAP:
+                for building in self.current_map.buildings:
+                    if building.building_type in [BUILDING_SMITH, BUILDING_BEDROOM]:
+                        building.render(screen, self.camera_x, self.camera_y)
             
             # Render "Interact" text if player is near a building (only on main map)
             if current_state == STATE_MAIN_MAP:
@@ -395,7 +447,12 @@ class Game:
             
             # Render UI (always on top)
             depth_level = self.get_depth_level() if current_state == STATE_EXPLORATION else 0
-            self.ui_manager.render(screen, self.player, self.day_night_manager, depth_level, current_state)
+            timer_remaining = self.exploration_timer if current_state == STATE_EXPLORATION else 0
+            self.ui_manager.render(screen, self.player, self.day_night_manager, depth_level, current_state, timer_remaining)
+            
+            # Render quit to main menu prompt if open
+            if self.quit_prompt_open:
+                self._render_quit_prompt(screen)
     
     def render_mining_radius(self, screen):
         """Render semi-transparent gray circle showing mining radius on exploration map"""
@@ -458,14 +515,11 @@ class Game:
         screen.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 100))
         
         instructions = [
-            "Use W/A/S/D or Arrow Keys to move",
-            "Press W or Up to jump",
             "Press E to interact with objects",
             "Press left mouse button to attack or destroy blocks",
             "Press ESC to quit",
             "",
-            "Click the Play button below to continue to weapon selection",
-            "Or complete your first quest to continue!"
+            "Click the Play button below to start the game"
         ]
         
         small_font = pygame.font.Font(None, 24)
@@ -492,29 +546,80 @@ class Game:
         play_text_x = button_x + button_width // 2 - play_text.get_width() // 2
         play_text_y = button_y + button_height // 2 - play_text.get_height() // 2
         screen.blit(play_text, (play_text_x, play_text_y))
+        
+        # Exit button (below Play button)
+        exit_button_y = button_y + button_height + 20
+        exit_button_rect = pygame.Rect(button_x, exit_button_y, button_width, button_height)
+        self.tutorial_exit_button = exit_button_rect
+        
+        # Draw Exit button
+        pygame.draw.rect(screen, (150, 80, 80), exit_button_rect)
+        pygame.draw.rect(screen, (200, 100, 100), exit_button_rect, 3)
+        
+        exit_text = button_font.render("Exit", True, WHITE)
+        exit_text_x = button_x + button_width // 2 - exit_text.get_width() // 2
+        exit_text_y = exit_button_y + button_height // 2 - exit_text.get_height() // 2
+        screen.blit(exit_text, (exit_text_x, exit_text_y))
+        
+        # Render quit confirmation prompt if open
+        if self.quit_prompt_open:
+            self._render_quit_prompt(screen)
     
-    def render_weapon_selection(self, screen):
-        """Render weapon selection screen"""
-        # Background
-        screen.fill((20, 20, 40))
+    def _render_quit_prompt(self, screen):
+        """Render quit confirmation prompt"""
+        # Semi-transparent overlay
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        screen.blit(overlay, (0, 0))
         
-        font = pygame.font.Font(None, 36)
-        title = font.render("Choose Your Weapon", True, WHITE)
-        screen.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 100))
+        # Prompt box
+        prompt_width = 400
+        prompt_height = 200
+        prompt_x = SCREEN_WIDTH // 2 - prompt_width // 2
+        prompt_y = SCREEN_HEIGHT // 2 - prompt_height // 2
+        prompt_rect = pygame.Rect(prompt_x, prompt_y, prompt_width, prompt_height)
         
-        weapons = [
-            "1 - Sword (Balanced damage and speed)",
-            "2 - Wand (Magic attacks, ranged)",
-            "3 - Bow (High damage, slow)"
-        ]
+        # Draw prompt background
+        pygame.draw.rect(screen, (40, 40, 50), prompt_rect)
+        pygame.draw.rect(screen, (100, 100, 120), prompt_rect, 3)
         
-        small_font = pygame.font.Font(None, 28)
-        y = 250
-        for weapon in weapons:
-            text = small_font.render(weapon, True, WHITE)
-            screen.blit(text, (SCREEN_WIDTH // 2 - text.get_width() // 2, y))
-            y += 60
+        # Prompt text
+        prompt_font = pygame.font.Font(None, 28)
+        prompt_text = prompt_font.render("Do you want to return to main menu?", True, WHITE)
+        prompt_text_x = prompt_x + (prompt_width - prompt_text.get_width()) // 2
+        prompt_text_y = prompt_y + 40
+        screen.blit(prompt_text, (prompt_text_x, prompt_text_y))
         
-        # Add instruction
-        esc_text = small_font.render("Press ESC to go back", True, LIGHT_GRAY)
-        screen.blit(esc_text, (SCREEN_WIDTH // 2 - esc_text.get_width() // 2, y + 40))
+        # Yes and No buttons
+        button_width = 120
+        button_height = 40
+        button_spacing = 20
+        
+        # Yes button
+        yes_button_x = prompt_x + (prompt_width - (button_width * 2 + button_spacing)) // 2
+        yes_button_y = prompt_y + prompt_height - button_height - 30
+        yes_button_rect = pygame.Rect(yes_button_x, yes_button_y, button_width, button_height)
+        self.quit_prompt_yes_button = yes_button_rect
+        
+        pygame.draw.rect(screen, (150, 80, 80), yes_button_rect)
+        pygame.draw.rect(screen, (200, 100, 100), yes_button_rect, 2)
+        
+        yes_text = prompt_font.render("Yes", True, WHITE)
+        yes_text_x = yes_button_x + (button_width - yes_text.get_width()) // 2
+        yes_text_y = yes_button_y + (button_height - yes_text.get_height()) // 2
+        screen.blit(yes_text, (yes_text_x, yes_text_y))
+        
+        # No button
+        no_button_x = yes_button_x + button_width + button_spacing
+        no_button_y = yes_button_y
+        no_button_rect = pygame.Rect(no_button_x, no_button_y, button_width, button_height)
+        self.quit_prompt_no_button = no_button_rect
+        
+        pygame.draw.rect(screen, (80, 150, 80), no_button_rect)
+        pygame.draw.rect(screen, (100, 200, 100), no_button_rect, 2)
+        
+        no_text = prompt_font.render("No", True, WHITE)
+        no_text_x = no_button_x + (button_width - no_text.get_width()) // 2
+        no_text_y = no_button_y + (button_height - no_text.get_height()) // 2
+        screen.blit(no_text, (no_text_x, no_text_y))
+    

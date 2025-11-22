@@ -24,6 +24,31 @@ class Map:
         # Coins/items on ground
         self.items = []
         
+        # Load background images for main map
+        self.background_image = None
+        self.background_layer2 = None
+        if self.map_type == MAP_MAIN:
+            self.background_image = asset_manager.get_sprite('background_main')
+            if self.background_image:
+                # Scale background to screen size if needed
+                bg_width, bg_height = self.background_image.get_size()
+                if bg_width != SCREEN_WIDTH or bg_height != SCREEN_HEIGHT:
+                    self.background_image = pygame.transform.scale(self.background_image, (SCREEN_WIDTH, SCREEN_HEIGHT))
+                # Convert to support alpha for transparency
+                if not self.background_image.get_flags() & pygame.SRCALPHA:
+                    self.background_image = self.background_image.convert_alpha()
+            
+            # Load additional background layer (foreground layer)
+            self.background_layer2 = asset_manager.get_sprite('background_layer2')
+            if self.background_layer2:
+                # Scale to screen size if needed
+                layer2_width, layer2_height = self.background_layer2.get_size()
+                if layer2_width != SCREEN_WIDTH or layer2_height != SCREEN_HEIGHT:
+                    self.background_layer2 = pygame.transform.scale(self.background_layer2, (SCREEN_WIDTH, SCREEN_HEIGHT))
+                # Ensure it supports alpha (should already have it, but make sure)
+                if not self.background_layer2.get_flags() & pygame.SRCALPHA:
+                    self.background_layer2 = self.background_layer2.convert_alpha()
+        
         # Add invisible collision blocks at map edges
         self._add_edge_collisions()
     
@@ -147,8 +172,10 @@ class Map:
         # This would regenerate the map
         pass
     
-    def render(self, screen, camera_x, camera_y, day_night_manager=None):
+    def render(self, screen, camera_x, camera_y, day_night_manager=None, render_buildings=True, exclude_buildings=None):
         """Render entire map"""
+        if exclude_buildings is None:
+            exclude_buildings = []
         # Calculate day/night darkness factor (0.0 = full day, 1.0 = full night)
         # Transition starts from day (0.5) to night (0.75), then full night
         darkness_factor = 0.0
@@ -180,68 +207,55 @@ class Map:
         bg_color_mid = tuple(int(bg_color_mid_day[i] * (1 - darkness_factor) + bg_color_mid_night[i] * darkness_factor) for i in range(3))
         bg_color_bottom = tuple(int(bg_color_bottom_day[i] * (1 - darkness_factor) + bg_color_bottom_night[i] * darkness_factor) for i in range(3))
         
-        # Render background (sky gradient) - regenerate each frame to reflect day/night changes
-        self._bg_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        for y in range(SCREEN_HEIGHT):
-            ratio = y / SCREEN_HEIGHT
-            if ratio < 0.5:
-                # Top half: top to mid
-                local_ratio = ratio * 2
-                r = int(bg_color_top[0] * (1 - local_ratio) + bg_color_mid[0] * local_ratio)
-                g = int(bg_color_top[1] * (1 - local_ratio) + bg_color_mid[1] * local_ratio)
-                b = int(bg_color_top[2] * (1 - local_ratio) + bg_color_mid[2] * local_ratio)
-            else:
-                # Bottom half: mid to bottom
-                local_ratio = (ratio - 0.5) * 2
-                r = int(bg_color_mid[0] * (1 - local_ratio) + bg_color_bottom[0] * local_ratio)
-                g = int(bg_color_mid[1] * (1 - local_ratio) + bg_color_bottom[1] * local_ratio)
-                b = int(bg_color_mid[2] * (1 - local_ratio) + bg_color_bottom[2] * local_ratio)
-            pygame.draw.line(self._bg_surface, (r, g, b), (0, y), (SCREEN_WIDTH, y))
-        screen.blit(self._bg_surface, (0, 0))
-        
-        # Special rendering for main map: green ground block
-        if self.map_type == MAP_MAIN:
-            # Calculate ground position (where blocks start)
-            ground_y = 25 * TILE_SIZE  # Top of ground blocks
-            ground_screen_y = ground_y - camera_y
+        # Render background
+        if self.map_type == MAP_MAIN and self.background_image:
+            # Calculate alpha for first background based on day/night cycle
+            # Day: alpha = 200 (semi-transparent, brighter)
+            # Night: alpha = 100 (more transparent, dimmer)
+            # Transition smoothly between day and night
+            base_alpha_day = 200
+            base_alpha_night = 100
+            current_alpha = int(base_alpha_day * (1 - darkness_factor) + base_alpha_night * darkness_factor)
             
-            # Draw green ground block from ground_y to bottom of screen, full width
-            # Always draw from top of screen if ground is above screen
-            green_start_y = max(0, ground_screen_y)
-            green_height = SCREEN_HEIGHT - green_start_y
+            # Render first background with alpha (semi-transparent)
+            bg1_surface = self.background_image.copy()
+            bg1_surface.set_alpha(current_alpha)
+            screen.blit(bg1_surface, (0, 0))
             
-            if green_height > 0:
-                # Green color with gradient for depth
-                green_base = (34, 139, 34)  # Forest green
-                green_dark = (0, 100, 0)     # Dark green
-                green_light = (50, 205, 50)  # Light green
-                
-                # Draw gradient green block (dociągnięty do rogów i dołu)
-                for y_offset in range(green_height):
-                    ratio = y_offset / max(green_height, 1)
-                    # Gradient from light at top to dark at bottom
-                    r = int(green_light[0] * (1 - ratio * 0.3) + green_base[0] * (ratio * 0.3))
-                    g = int(green_light[1] * (1 - ratio * 0.3) + green_base[1] * (ratio * 0.3))
-                    b = int(green_light[2] * (1 - ratio * 0.3) + green_base[2] * (ratio * 0.3))
-                    pygame.draw.line(screen, (r, g, b), 
-                                    (0, green_start_y + y_offset), 
-                                    (SCREEN_WIDTH, green_start_y + y_offset))
-                
-                # Add texture lines for grass effect at top
-                if ground_screen_y >= 0:
-                    for i in range(0, SCREEN_WIDTH, 20):
-                        pygame.draw.line(screen, green_dark, (i, ground_screen_y), (i, ground_screen_y + 5), 1)
-                    
-                    # Top border (grass line)
-                    pygame.draw.line(screen, green_light, (0, ground_screen_y), (SCREEN_WIDTH, ground_screen_y), 3)
+            # Render additional background layer (in front of first background) - no dimming or transparency
+            if self.background_layer2:
+                screen.blit(self.background_layer2, (0, 0))
         else:
+            # Render background (sky gradient) - regenerate each frame to reflect day/night changes
+            self._bg_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+            for y in range(SCREEN_HEIGHT):
+                ratio = y / SCREEN_HEIGHT
+                if ratio < 0.5:
+                    # Top half: top to mid
+                    local_ratio = ratio * 2
+                    r = int(bg_color_top[0] * (1 - local_ratio) + bg_color_mid[0] * local_ratio)
+                    g = int(bg_color_top[1] * (1 - local_ratio) + bg_color_mid[1] * local_ratio)
+                    b = int(bg_color_top[2] * (1 - local_ratio) + bg_color_mid[2] * local_ratio)
+                else:
+                    # Bottom half: mid to bottom
+                    local_ratio = (ratio - 0.5) * 2
+                    r = int(bg_color_mid[0] * (1 - local_ratio) + bg_color_bottom[0] * local_ratio)
+                    g = int(bg_color_mid[1] * (1 - local_ratio) + bg_color_bottom[1] * local_ratio)
+                    b = int(bg_color_mid[2] * (1 - local_ratio) + bg_color_bottom[2] * local_ratio)
+                pygame.draw.line(self._bg_surface, (r, g, b), (0, y), (SCREEN_WIDTH, y))
+            screen.blit(self._bg_surface, (0, 0))
+        
+        # Render blocks for exploration map
+        if self.map_type != MAP_MAIN:
             # Render blocks normally for other maps
             for block in self.blocks:
                 block.render(screen, camera_x, camera_y)
         
-        # Render buildings
-        for building in self.buildings:
-            building.render(screen, camera_x, camera_y)
+        # Render buildings (excluding specified ones if needed)
+        if render_buildings:
+            for building in self.buildings:
+                if building.building_type not in exclude_buildings:
+                    building.render(screen, camera_x, camera_y)
         
         # Render exits (visual indicator with glow effect)
         for exit_point in self.exits:

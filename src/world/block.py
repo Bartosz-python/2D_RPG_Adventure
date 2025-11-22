@@ -18,7 +18,8 @@ class Block:
         BLOCK_DURABILITY = {
             'dirt': 10,
             'stone': 50,
-            'copper_ore': 75
+            'copper': 75,
+            'copper_ore': 75  # Alias for compatibility
         }
         self.max_hp = BLOCK_DURABILITY.get(block_type, 10) if destructible else float('inf')
         self.hp = self.max_hp
@@ -102,6 +103,11 @@ class Block:
                     base_color = (120, 120, 120)
                     dark_color = (80, 80, 80)
                     light_color = (160, 160, 160)
+            elif self.block_type == 'copper' or self.block_type == 'copper_ore':
+                # Light green copper
+                base_color = (144, 238, 144)  # Light green
+                dark_color = (124, 218, 124)  # Slightly darker green
+                light_color = (164, 255, 164)  # Lighter green
             else:  # dirt
                 base_color = (139, 69, 19)
                 dark_color = (101, 50, 14)

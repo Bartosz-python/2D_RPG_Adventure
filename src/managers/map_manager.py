@@ -44,7 +44,7 @@ class MapManager:
         # Building height is 3 tiles, so place them at y=22 to sit on ground
         building_y = 22
         game_map.add_building(10, building_y, BUILDING_BEDROOM)
-        game_map.add_building(20, building_y, BUILDING_SMITH)
+        game_map.add_building(21, building_y, BUILDING_SMITH)  # Moved 1 block to the right (was 20)
         game_map.add_building(30, building_y, BUILDING_TAILOR)
         game_map.add_building(40, building_y, BUILDING_WITCH)
         game_map.add_building(15, building_y, BUILDING_FIREPLACE)
@@ -52,7 +52,7 @@ class MapManager:
         # Add exit to exploration above top edge of green block on right side
         # Portal should be at top edge of green block (y=25), but visually above it
         # Exit is 2 tiles tall, so place it at y=23 to align with top edge
-        game_map.add_exit(45, 23, "exploration")  # Right side of map, above green block
+        game_map.add_exit(47, 23, "exploration")  # Right side of map, moved 2 blocks right (was 45)
         
         return game_map
     
@@ -80,19 +80,43 @@ class MapManager:
             """Get block type based on depth level with probability ratios"""
             import random
             depth = block_y - spawn_y
+            rand = random.random()
             
+            # Check for copper first (has priority in its depth ranges)
+            if 20 <= depth <= 50:
+                # Depth 20-50: 1% copper
+                if rand < 0.01:
+                    return 'copper'
+                # Remaining 99% goes to dirt/stone based on depth rules
+                # For depth 20-50, we're in the 26-70 range, so 20% dirt, 80% stone
+                rand = (rand - 0.01) / 0.99  # Normalize to 0-1 range
+                return 'dirt' if rand < 0.20 else 'stone'
+            elif 51 <= depth <= 112:
+                # Depth 51-112: 4% copper
+                if rand < 0.04:
+                    return 'copper'
+                # Remaining 96% goes to dirt/stone
+                # For depth 51-70, use 20% dirt, 80% stone
+                # For depth 71-112, use 2% dirt, 98% stone
+                rand = (rand - 0.04) / 0.96  # Normalize to 0-1 range
+                if depth <= 70:
+                    return 'dirt' if rand < 0.20 else 'stone'
+                else:
+                    return 'dirt' if rand < 0.02 else 'stone'
+            
+            # For depths outside copper range, use normal dirt/stone ratios
             if depth <= 10:
                 # Above depth 10: 95% dirt, 5% stone
-                return 'dirt' if random.random() < 0.95 else 'stone'
+                return 'dirt' if rand < 0.95 else 'stone'
             elif depth <= 25:
                 # Depth 11-25: 80% dirt, 20% stone
-                return 'dirt' if random.random() < 0.80 else 'stone'
+                return 'dirt' if rand < 0.80 else 'stone'
             elif depth <= 70:
                 # Depth 26-70: 20% dirt, 80% stone
-                return 'dirt' if random.random() < 0.20 else 'stone'
+                return 'dirt' if rand < 0.20 else 'stone'
             else:
                 # Below depth 71: 2% dirt, 98% stone
-                return 'dirt' if random.random() < 0.02 else 'stone'
+                return 'dirt' if rand < 0.02 else 'stone'
         
         # Fill entire platform with destroyable blocks
         # Blocks are 2x2 size, so place them at 2x2 intervals (every other grid position)
@@ -120,8 +144,10 @@ class MapManager:
         for x in range(map_width):
             game_map.add_block(x, bottom_y, 'stone', destructible=False)
         
-        # Add exit back to main
-        game_map.add_exit(5, 34, "main")
+        # Add exit back to main (moved to previous player spawn position)
+        # Previous spawn was at x=100 pixels = 100/32 = 3.125 blocks, so x=3
+        # Previous spawn y was 33 blocks, moved 2.5 blocks higher to 30.5
+        game_map.add_exit(3, 33 - 5, "main")
         
         return game_map
     

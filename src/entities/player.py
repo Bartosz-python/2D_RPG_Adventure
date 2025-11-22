@@ -52,7 +52,7 @@ class Player:
                 self.keys['left'] = True
             elif event.key in [pygame.K_d, pygame.K_RIGHT]:
                 self.keys['right'] = True
-            elif event.key in [pygame.K_w, pygame.K_UP]:
+            elif event.key in [pygame.K_SPACE, pygame.K_UP]:
                 self.keys['jump'] = True
         
         elif event.type == pygame.KEYUP:
@@ -60,7 +60,7 @@ class Player:
                 self.keys['left'] = False
             elif event.key in [pygame.K_d, pygame.K_RIGHT]:
                 self.keys['right'] = False
-            elif event.key in [pygame.K_w, pygame.K_UP]:
+            elif event.key in [pygame.K_SPACE, pygame.K_UP]:
                 self.keys['jump'] = False
         
         elif event.type == pygame.MOUSEBUTTONDOWN:
@@ -221,6 +221,20 @@ class Player:
         if distance > mining_radius:
             return False
         
+        # First, check for platforms at the mouse position (platforms can be anywhere)
+        # Platforms are thin (4px) and might not be detected by the grid-based search
+        # Check a small area around the click point to catch thin platforms
+        check_radius = 5  # Check 5 pixels around the click point
+        for block in current_map.blocks:
+            if block.is_platform:
+                # Check if click point is near the platform (within check_radius)
+                # Platforms are horizontal, so check if mouse is within platform width and near platform y
+                if (block.rect.left - check_radius <= world_x <= block.rect.right + check_radius and
+                    block.rect.top - check_radius <= world_y <= block.rect.bottom + check_radius):
+                    # Platform found, destroy it instantly
+                    current_map.remove_block(block)
+                    return True
+        
         # Find the top-left block of the 2x2 grid area containing the mouse position
         # Blocks are in a 2x2 grid, so find which 2x2 cell the mouse is in
         BLOCK_GRID_SIZE = TILE_SIZE * 2  # 2x2 block grid size
@@ -230,11 +244,9 @@ class Player:
         # Find the top-left block at this grid position
         block = current_map.get_block_at(grid_x, grid_y)
         if block:
-            # Handle platform destruction
+            # Skip platforms here (already handled above)
             if block.is_platform:
-                # Platforms are destroyed instantly
-                current_map.remove_block(block)
-                return True
+                return False
             
             # Handle regular destructible blocks
             if block.destructible:

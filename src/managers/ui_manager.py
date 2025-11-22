@@ -14,36 +14,47 @@ class UIManager:
         self.font = pygame.font.Font(None, 24)
         self.small_font = pygame.font.Font(None, 18)
         
+        # Track building upgrade levels (0 = no upgrades, 1 = first upgrade, 2 = second upgrade)
+        self.building_upgrades = {
+            BUILDING_SMITH: 0,
+            BUILDING_TAILOR: 0,
+            BUILDING_WITCH: 0,
+            BUILDING_FIREPLACE: 0,
+            BUILDING_BEDROOM: 0
+        }
+        
         # Slot size (define first, used in position calculations)
         self.slot_size = 50
         self.slot_padding = 5
         
         # UI element positions (centered and fully visible with padding)
-        padding = 70  # Safe padding from screen edges
+        padding = 70  # Safe padding from screen edges (for other elements)
         
-        # Top-left corner: Inventory (centered horizontally in left quarter)
+        # Top-left corner: Inventory (10 pixels from left and top)
         inventory_bar_width = (self.slot_size + self.slot_padding) * VISIBLE_SLOTS - self.slot_padding
-        inventory_x = padding + (SCREEN_WIDTH // 4 - inventory_bar_width)
-        self.inventory_pos = (inventory_x, padding)
+        inventory_x = 25  # 10 pixels from left border
+        inventory_y = 10  # 10 pixels from top border
+        self.inventory_pos = (inventory_x, inventory_y)
         
         # HP bar below inventory (centered with inventory)
         hp_bar_width = 350
         hp_bar_x = inventory_x + (inventory_bar_width - hp_bar_width) // 2
-        self.hp_bar_pos = (hp_bar_x, padding + 90)  # Below inventory
+        self.hp_bar_pos = (hp_bar_x, inventory_y + 90)  # Below inventory
         
         # Top-right corner: Exit button
         exit_btn_size = 40
         self.exit_button_pos = (SCREEN_WIDTH - exit_btn_size - padding, padding)
         self.exit_button_rect = None
         
-        # Top-left corner: Day counter (moved to left side for full visibility)
+        # Top-right corner: Day counter and depth (30 pixels from right, same height as inventory)
         day_counter_width = 150
-        self.day_counter_pos = (padding + 1550, padding)
+        # Position will be calculated in render to align right edge 30px from screen edge
+        self.day_counter_pos = (SCREEN_WIDTH - 30, inventory_y)  # Same y as inventory
         
-        # Bottom-center: Stats and Equipment (centered, properly spaced)
+        # Bottom-center: Stats and Equipment (centered, 10 pixels from bottom)
         equipment_bar_width = (self.slot_size + self.slot_padding) * 7 - self.slot_padding
         equipment_x = SCREEN_WIDTH // 2 - equipment_bar_width // 2
-        bottom_margin = padding
+        bottom_margin = 10  # 10 pixels from bottom edge
         self.equipment_pos = (equipment_x, SCREEN_HEIGHT - bottom_margin - self.slot_size - 30)
         
         # Stats above equipment bar (centered)
@@ -57,7 +68,7 @@ class UIManager:
         self.title_bar_button_padding = 5
         self.title_bar_buttons = {}  # Will store button rects
     
-    def render(self, screen, player, day_night_manager, depth_level=0, current_state=None):
+    def render(self, screen, player, day_night_manager, depth_level=0, current_state=None, timer_remaining=0):
         """Render all UI elements"""
         # Note: Title bar is rendered separately in game.render() to be always visible
         self.render_inventory(screen, player)
@@ -66,10 +77,13 @@ class UIManager:
         self.render_stats(screen, player)
         self.render_day_counter(screen, day_night_manager)
         self.render_depth_level(screen, depth_level)
-        self.render_exit_button(screen)
+        
+        # Render exploration timer (only on exploration map)
+        from src.config.settings import STATE_EXPLORATION
+        if current_state == STATE_EXPLORATION and timer_remaining > 0:
+            self.render_exploration_timer(screen, timer_remaining)
         
         # Render platform placement text on exploration map
-        from src.config.settings import STATE_EXPLORATION
         if current_state == STATE_EXPLORATION:
             self.render_platform_text(screen)
         
@@ -85,23 +99,24 @@ class UIManager:
         inventory_bar_width = (self.slot_size + self.slot_padding) * VISIBLE_SLOTS - self.slot_padding
         panel_width = inventory_bar_width + 20
         panel_height = 65
-        panel_rect = pygame.Rect(x - 10, y - 5, panel_width, panel_height)
+        panel_x = x - 10
+        panel_rect = pygame.Rect(panel_x, y - 5, panel_width, panel_height)
         panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
         # Gradient background
         for py in range(panel_height):
             alpha = int(220 - (py / panel_height) * 20)
             pygame.draw.line(panel_surface, (50, 50, 60, alpha), (0, py), (panel_width, py))
-        screen.blit(panel_surface, (x - 10, y - 5))
+        screen.blit(panel_surface, (panel_x, y - 5))
         pygame.draw.rect(screen, (120, 120, 140), panel_rect, 2)
         # Inner highlight
-        pygame.draw.line(screen, (80, 80, 100, 100), (x - 8, y - 3), (x + panel_width - 12, y - 3), 1)
+        pygame.draw.line(screen, (80, 80, 100, 100), (panel_x + 2, y - 3), (panel_x + panel_width - 8, y - 3), 1)
         
-        # Calculate centered slots position
-        slots_start_x = x + (panel_width - inventory_bar_width) // 2
+        # Calculate centered slots position within panel
+        slots_start_x = panel_x + (panel_width - inventory_bar_width) // 2
         
         # Title (centered)
         title = self.small_font.render("Inventory", True, WHITE)
-        title_x = x + (panel_width - title.get_width()) // 2
+        title_x = panel_x + (panel_width - title.get_width()) // 2
         screen.blit(title, (title_x, y))
         
         y += 25
@@ -126,19 +141,37 @@ class UIManager:
             
             # Draw item if present
             if item:
-                # Placeholder item rendering
-                item_color = self._get_item_color(item)
-                item_rect = pygame.Rect(slot_x + 5, y + 5, self.slot_size - 10, self.slot_size - 10)
-                pygame.draw.rect(screen, item_color, item_rect)
+                # Try to get sprite from asset manager (for dirt and other items with sprites)
+                sprite = None
+                if self.asset_manager:
+                    # Check for item-specific sprite first (e.g., 'dirt')
+                    sprite = self.asset_manager.get_sprite(item)
+                    # If not found, check for block sprite (e.g., 'block_dirt')
+                    if not sprite and item in ['dirt', 'stone', 'copper']:
+                        sprite = self.asset_manager.get_sprite(f'block_{item}')
                 
-                # Draw count
+                if sprite:
+                    # Scale sprite to fit slot (with padding)
+                    sprite_size = self.slot_size - 10
+                    scaled_sprite = pygame.transform.scale(sprite, (sprite_size, sprite_size))
+                    screen.blit(scaled_sprite, (slot_x + 5, y + 5))
+                else:
+                    # Fallback to color rendering
+                    item_color = self._get_item_color(item)
+                    item_rect = pygame.Rect(slot_x + 5, y + 5, self.slot_size - 10, self.slot_size - 10)
+                    pygame.draw.rect(screen, item_color, item_rect)
+                
+                # Draw count centered at bottom of slot
                 count_text = self.small_font.render(str(count), True, WHITE)
-                screen.blit(count_text, (slot_x + self.slot_size - 20, y + self.slot_size - 20))
+                # Center horizontally and position at bottom
+                count_x = slot_x + (self.slot_size - count_text.get_width()) // 2
+                count_y = y + self.slot_size - count_text.get_height() - 3  # 3 pixels from bottom
+                screen.blit(count_text, (count_x, count_y))
         
         # Show "Inventory Full" message if needed (centered)
         if player.inventory.is_full():
             msg = self.small_font.render("INVENTORY FULL", True, RED)
-            msg_x = x + (panel_width - msg.get_width()) // 2
+            msg_x = panel_x + (panel_width - msg.get_width()) // 2
             screen.blit(msg, (msg_x, y + self.slot_size + 10))
     
     def render_hp_bar(self, screen, player):
@@ -278,7 +311,7 @@ class UIManager:
         slot_keys = ['helmet', 'chestplate', 'leggings', 'boots', 'consumable1', 'consumable2', 'weapon']
         
         # Center slots within panel
-        slots_start_x = x + (panel_width - equipment_bar_width) // 2
+        slots_start_x = panel_x + (panel_width - equipment_bar_width) // 2
         
         for i, (label, key) in enumerate(zip(labels, slot_keys)):
             slot_x = slots_start_x + (self.slot_size + self.slot_padding) * i
@@ -360,9 +393,12 @@ class UIManager:
         day_text = self.small_font.render(f"Day {day}", True, WHITE)
         time_text = self.small_font.render(time_of_day, True, YELLOW if day_night_manager.is_day() else BLUE)
         
-        # Use stored position
-        x, y = self.day_counter_pos
+        # Use stored position (right edge position)
+        right_edge_x, y = self.day_counter_pos
         panel_width = max(day_text.get_width(), time_text.get_width()) + 20
+        
+        # Calculate x position so right edge is at right_edge_x (30px from screen right)
+        x = right_edge_x - panel_width + 10  # +10 to account for panel padding
         
         # Background panel with gradient
         panel_height = 50
@@ -384,8 +420,10 @@ class UIManager:
         
         depth_text = self.small_font.render(f"Depth: {depth_level}", True, WHITE)
         
-        # Position below day counter
-        x, y = self.day_counter_pos
+        # Position below day counter, aligned to right edge
+        right_edge_x, y = self.day_counter_pos
+        panel_width = depth_text.get_width() + 20
+        x = right_edge_x - panel_width + 10  # Align right edge 30px from screen right
         y += 50  # Below day counter panel
         
         panel_width = depth_text.get_width() + 20
@@ -401,6 +439,49 @@ class UIManager:
         pygame.draw.rect(screen, (120, 120, 140), panel_rect, 2)
         
         screen.blit(depth_text, (x, y + 6))
+    
+    def render_exploration_timer(self, screen, timer_remaining):
+        """Render exploration timer (below depth level)"""
+        import math
+        
+        # Calculate minutes and seconds
+        total_seconds = max(0, int(timer_remaining))
+        minutes = total_seconds // 60
+        seconds = total_seconds % 60
+        
+        # Format as MM:SS
+        timer_text_str = f"{minutes:02d}:{seconds:02d}"
+        
+        # Check if <= 2 minutes (120 seconds) - make bigger and red
+        if total_seconds <= 120:
+            # Use larger font (2x size)
+            timer_font = pygame.font.Font(None, 36)  # 2x the small_font size (18 * 2)
+            timer_color = RED
+        else:
+            # Normal size
+            timer_font = self.small_font
+            timer_color = WHITE
+        
+        timer_text = timer_font.render(timer_text_str, True, timer_color)
+        
+        # Position below depth level, aligned to right edge
+        right_edge_x, y = self.day_counter_pos
+        panel_width = timer_text.get_width() + 20
+        x = right_edge_x - panel_width + 10  # Align right edge 30px from screen right
+        y += 80  # Below depth level panel (50 for day counter + 30 for depth)
+        
+        panel_height = timer_text.get_height() + 10
+        
+        # Background panel with gradient
+        panel_rect = pygame.Rect(x - 10, y, panel_width, panel_height)
+        panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+        for py in range(panel_height):
+            alpha = int(220 - (py / panel_height) * 20)
+            pygame.draw.line(panel_surface, (50, 50, 60, alpha), (0, py), (panel_width, py))
+        screen.blit(panel_surface, (x - 10, y))
+        pygame.draw.rect(screen, (120, 120, 140), panel_rect, 2)
+        
+        screen.blit(timer_text, (x, y + 5))
     
     def render_menu(self, screen, player):
         """Render building interaction menu"""
@@ -467,6 +548,43 @@ class UIManager:
     def _render_smith_menu(self, screen, x, y, player):
         """Render smith (weapon upgrade) menu"""
         menu_width = 600
+        upgrade_level = self.building_upgrades.get(BUILDING_SMITH, 0)
+        
+        # Render "Upgrade building" button in top right corner
+        upgrade_button_x = x + menu_width - 180 - 20  # 180 is button width, 20 is margin from right
+        upgrade_button_y = y + 60
+        upgrade_button_width = 180
+        upgrade_button_height = 40
+        
+        # Determine upgrade cost
+        if upgrade_level == 0:
+            upgrade_cost = 200
+        elif upgrade_level == 1:
+            upgrade_cost = 900
+        else:
+            upgrade_cost = None  # Maxed out
+        
+        upgrade_button_rect = pygame.Rect(upgrade_button_x, upgrade_button_y, upgrade_button_width, upgrade_button_height)
+        can_afford_upgrade = upgrade_cost is not None and player.gold >= upgrade_cost
+        
+        upgrade_button_color = (100, 150, 100) if can_afford_upgrade else (80, 80, 80)
+        upgrade_border_color = (150, 200, 150) if can_afford_upgrade else (100, 100, 100)
+        
+        pygame.draw.rect(screen, upgrade_button_color, upgrade_button_rect)
+        pygame.draw.rect(screen, upgrade_border_color, upgrade_button_rect, 2)
+        
+        upgrade_text = f"Upgrade building ({upgrade_cost}g)" if upgrade_cost else "Upgrade building (MAX)"
+        upgrade_text_color = WHITE if can_afford_upgrade else LIGHT_GRAY
+        upgrade_text_surface = self.small_font.render(upgrade_text, True, upgrade_text_color)
+        screen.blit(upgrade_text_surface, (upgrade_button_x + 10, upgrade_button_y + 12))
+        
+        self.building_upgrade_button = {
+            'rect': upgrade_button_rect,
+            'cost': upgrade_cost,
+            'can_afford': can_afford_upgrade,
+            'building': BUILDING_SMITH
+        }
+        
         y_offset = 80
         text = self.font.render("Weapon Upgrades", True, WHITE)
         screen.blit(text, (x + 20, y + y_offset))
@@ -482,11 +600,13 @@ class UIManager:
         
         self.upgrade_buttons = []
         for i, (name, cost, damage, weapon_type) in enumerate(upgrades):
+            # Check if button is unlocked (first button always unlocked, others based on upgrade level)
+            is_unlocked = i <= upgrade_level
             button_y = y + y_offset
             button_rect = pygame.Rect(x + 30, button_y, menu_width - 60, 50)
             
-            # Check if player can afford
-            can_afford = player.gold >= cost
+            # Check if player can afford (only if unlocked)
+            can_afford = is_unlocked and player.gold >= cost
             button_color = (80, 120, 80) if can_afford else (80, 80, 80)
             border_color = (100, 200, 100) if can_afford else (100, 100, 100)
             
@@ -494,9 +614,22 @@ class UIManager:
             pygame.draw.rect(screen, button_color, button_rect)
             pygame.draw.rect(screen, border_color, button_rect, 2)
             
+            # Draw red cross if locked
+            if not is_unlocked:
+                cross_size = 20
+                cross_x = button_rect.centerx - cross_size // 2
+                cross_y = button_rect.centery - cross_size // 2
+                pygame.draw.line(screen, RED, (cross_x, cross_y), 
+                               (cross_x + cross_size, cross_y + cross_size), 3)
+                pygame.draw.line(screen, RED, (cross_x + cross_size, cross_y), 
+                               (cross_x, cross_y + cross_size), 3)
+            
             # Button text
-            upgrade_text = f"{name} - {cost}g (DMG: {damage})"
-            text_color = WHITE if can_afford else LIGHT_GRAY
+            if is_unlocked:
+                upgrade_text = f"{name} - {cost}g (DMG: {damage})"
+            else:
+                upgrade_text = f"{name} - LOCKED"
+            text_color = WHITE if can_afford else (LIGHT_GRAY if is_unlocked else (100, 100, 100))
             text_surface = self.small_font.render(upgrade_text, True, text_color)
             screen.blit(text_surface, (x + 50, button_y + 15))
             
@@ -507,7 +640,8 @@ class UIManager:
                 'cost': cost,
                 'damage': damage,
                 'weapon_type': weapon_type,
-                'can_afford': can_afford
+                'can_afford': can_afford,
+                'is_unlocked': is_unlocked
             })
             
             y_offset += 60
@@ -520,10 +654,11 @@ class UIManager:
         # Count resources
         dirt_count = player.inventory.get_item_count('dirt')
         stone_count = player.inventory.get_item_count('stone')
-        total_gold = dirt_count * 1 + stone_count * 2
+        copper_count = player.inventory.get_item_count('copper')
+        total_gold = dirt_count * 1 + stone_count * 2 + copper_count * 15
         
         # Check if player has resources to sell
-        has_resources = dirt_count > 0 or stone_count > 0
+        has_resources = dirt_count > 0 or stone_count > 0 or copper_count > 0
         button_color = (120, 100, 80) if has_resources else (80, 80, 80)
         border_color = (200, 150, 100) if has_resources else (100, 100, 100)
         
@@ -548,6 +683,44 @@ class UIManager:
     
     def _render_tailor_menu(self, screen, x, y, player):
         """Render tailor (armor) menu"""
+        menu_width = 600
+        upgrade_level = self.building_upgrades.get(BUILDING_TAILOR, 0)
+        
+        # Render "Upgrade building" button in top right corner
+        upgrade_button_x = x + menu_width - 180 - 20  # 180 is button width, 20 is margin from right
+        upgrade_button_y = y + 60
+        upgrade_button_width = 180
+        upgrade_button_height = 40
+        
+        # Determine upgrade cost
+        if upgrade_level == 0:
+            upgrade_cost = 200
+        elif upgrade_level == 1:
+            upgrade_cost = 900
+        else:
+            upgrade_cost = None  # Maxed out
+        
+        upgrade_button_rect = pygame.Rect(upgrade_button_x, upgrade_button_y, upgrade_button_width, upgrade_button_height)
+        can_afford_upgrade = upgrade_cost is not None and player.gold >= upgrade_cost
+        
+        upgrade_button_color = (100, 150, 100) if can_afford_upgrade else (80, 80, 80)
+        upgrade_border_color = (150, 200, 150) if can_afford_upgrade else (100, 100, 100)
+        
+        pygame.draw.rect(screen, upgrade_button_color, upgrade_button_rect)
+        pygame.draw.rect(screen, upgrade_border_color, upgrade_button_rect, 2)
+        
+        upgrade_text = f"Upgrade building ({upgrade_cost}g)" if upgrade_cost else "Upgrade building (MAX)"
+        upgrade_text_color = WHITE if can_afford_upgrade else LIGHT_GRAY
+        upgrade_text_surface = self.small_font.render(upgrade_text, True, upgrade_text_color)
+        screen.blit(upgrade_text_surface, (upgrade_button_x + 10, upgrade_button_y + 12))
+        
+        self.building_upgrade_button = {
+            'rect': upgrade_button_rect,
+            'cost': upgrade_cost,
+            'can_afford': can_afford_upgrade,
+            'building': BUILDING_TAILOR
+        }
+        
         y_offset = 80
         text = self.font.render("Armor & Backpack Upgrades", True, WHITE)
         screen.blit(text, (x + 20, y + y_offset))
@@ -562,20 +735,34 @@ class UIManager:
         ]
         
         self.upgrade_buttons = []
-        menu_width = 600  # Same as in render_menu
         for i, (name, cost, upgrade_type) in enumerate(upgrades):
+            # Check if button is unlocked (first button always unlocked, others based on upgrade level)
+            is_unlocked = i <= upgrade_level
             button_y = y + y_offset
             button_rect = pygame.Rect(x + 30, button_y, menu_width - 60, 50)
             
-            can_afford = player.gold >= cost
+            can_afford = is_unlocked and player.gold >= cost
             button_color = (80, 120, 80) if can_afford else (80, 80, 80)
             border_color = (100, 200, 100) if can_afford else (100, 100, 100)
             
             pygame.draw.rect(screen, button_color, button_rect)
             pygame.draw.rect(screen, border_color, button_rect, 2)
             
-            upgrade_text = f"{name} - {cost}g"
-            text_color = WHITE if can_afford else LIGHT_GRAY
+            # Draw red cross if locked
+            if not is_unlocked:
+                cross_size = 20
+                cross_x = button_rect.centerx - cross_size // 2
+                cross_y = button_rect.centery - cross_size // 2
+                pygame.draw.line(screen, RED, (cross_x, cross_y), 
+                               (cross_x + cross_size, cross_y + cross_size), 3)
+                pygame.draw.line(screen, RED, (cross_x + cross_size, cross_y), 
+                               (cross_x, cross_y + cross_size), 3)
+            
+            if is_unlocked:
+                upgrade_text = f"{name} - {cost}g"
+            else:
+                upgrade_text = f"{name} - LOCKED"
+            text_color = WHITE if can_afford else (LIGHT_GRAY if is_unlocked else (100, 100, 100))
             text_surface = self.small_font.render(upgrade_text, True, text_color)
             screen.blit(text_surface, (x + 50, button_y + 15))
             
@@ -584,13 +771,52 @@ class UIManager:
                 'name': name,
                 'cost': cost,
                 'upgrade_type': upgrade_type,
-                'can_afford': can_afford
+                'can_afford': can_afford,
+                'is_unlocked': is_unlocked
             })
             
             y_offset += 60
     
     def _render_witch_menu(self, screen, x, y, player):
         """Render witch (consumables) menu"""
+        menu_width = 600
+        upgrade_level = self.building_upgrades.get(BUILDING_WITCH, 0)
+        
+        # Render "Upgrade building" button in top right corner
+        upgrade_button_x = x + menu_width - 180 - 20  # 180 is button width, 20 is margin from right
+        upgrade_button_y = y + 60
+        upgrade_button_width = 180
+        upgrade_button_height = 40
+        
+        # Determine upgrade cost
+        if upgrade_level == 0:
+            upgrade_cost = 200
+        elif upgrade_level == 1:
+            upgrade_cost = 900
+        else:
+            upgrade_cost = None  # Maxed out
+        
+        upgrade_button_rect = pygame.Rect(upgrade_button_x, upgrade_button_y, upgrade_button_width, upgrade_button_height)
+        can_afford_upgrade = upgrade_cost is not None and player.gold >= upgrade_cost
+        
+        upgrade_button_color = (100, 150, 100) if can_afford_upgrade else (80, 80, 80)
+        upgrade_border_color = (150, 200, 150) if can_afford_upgrade else (100, 100, 100)
+        
+        pygame.draw.rect(screen, upgrade_button_color, upgrade_button_rect)
+        pygame.draw.rect(screen, upgrade_border_color, upgrade_button_rect, 2)
+        
+        upgrade_text = f"Upgrade building ({upgrade_cost}g)" if upgrade_cost else "Upgrade building (MAX)"
+        upgrade_text_color = WHITE if can_afford_upgrade else LIGHT_GRAY
+        upgrade_text_surface = self.small_font.render(upgrade_text, True, upgrade_text_color)
+        screen.blit(upgrade_text_surface, (upgrade_button_x + 10, upgrade_button_y + 12))
+        
+        self.building_upgrade_button = {
+            'rect': upgrade_button_rect,
+            'cost': upgrade_cost,
+            'can_afford': can_afford_upgrade,
+            'building': BUILDING_WITCH
+        }
+        
         y_offset = 80
         text = self.font.render("Potions & Consumables", True, WHITE)
         screen.blit(text, (x + 20, y + y_offset))
@@ -605,20 +831,34 @@ class UIManager:
         ]
         
         self.upgrade_buttons = []
-        menu_width = 600
         for i, (name, cost, potion_type) in enumerate(potions):
+            # Check if button is unlocked (first button always unlocked, others based on upgrade level)
+            is_unlocked = i <= upgrade_level
             button_y = y + y_offset
             button_rect = pygame.Rect(x + 30, button_y, menu_width - 60, 50)
             
-            can_afford = player.gold >= cost
+            can_afford = is_unlocked and player.gold >= cost
             button_color = (80, 120, 80) if can_afford else (80, 80, 80)
             border_color = (100, 200, 100) if can_afford else (100, 100, 100)
             
             pygame.draw.rect(screen, button_color, button_rect)
             pygame.draw.rect(screen, border_color, button_rect, 2)
             
-            potion_text = f"{name} - {cost}g"
-            text_color = WHITE if can_afford else LIGHT_GRAY
+            # Draw red cross if locked
+            if not is_unlocked:
+                cross_size = 20
+                cross_x = button_rect.centerx - cross_size // 2
+                cross_y = button_rect.centery - cross_size // 2
+                pygame.draw.line(screen, RED, (cross_x, cross_y), 
+                               (cross_x + cross_size, cross_y + cross_size), 3)
+                pygame.draw.line(screen, RED, (cross_x + cross_size, cross_y), 
+                               (cross_x, cross_y + cross_size), 3)
+            
+            if is_unlocked:
+                potion_text = f"{name} - {cost}g"
+            else:
+                potion_text = f"{name} - LOCKED"
+            text_color = WHITE if can_afford else (LIGHT_GRAY if is_unlocked else (100, 100, 100))
             text_surface = self.small_font.render(potion_text, True, text_color)
             screen.blit(text_surface, (x + 50, button_y + 15))
             
@@ -627,13 +867,52 @@ class UIManager:
                 'name': name,
                 'cost': cost,
                 'potion_type': potion_type,
-                'can_afford': can_afford
+                'can_afford': can_afford,
+                'is_unlocked': is_unlocked
             })
             
             y_offset += 60
     
     def _render_fireplace_menu(self, screen, x, y, player):
         """Render fireplace (cooking) menu"""
+        menu_width = 600
+        upgrade_level = self.building_upgrades.get(BUILDING_FIREPLACE, 0)
+        
+        # Render "Upgrade building" button in top right corner
+        upgrade_button_x = x + menu_width - 180 - 20  # 180 is button width, 20 is margin from right
+        upgrade_button_y = y + 60
+        upgrade_button_width = 180
+        upgrade_button_height = 40
+        
+        # Determine upgrade cost
+        if upgrade_level == 0:
+            upgrade_cost = 200
+        elif upgrade_level == 1:
+            upgrade_cost = 900
+        else:
+            upgrade_cost = None  # Maxed out
+        
+        upgrade_button_rect = pygame.Rect(upgrade_button_x, upgrade_button_y, upgrade_button_width, upgrade_button_height)
+        can_afford_upgrade = upgrade_cost is not None and player.gold >= upgrade_cost
+        
+        upgrade_button_color = (100, 150, 100) if can_afford_upgrade else (80, 80, 80)
+        upgrade_border_color = (150, 200, 150) if can_afford_upgrade else (100, 100, 100)
+        
+        pygame.draw.rect(screen, upgrade_button_color, upgrade_button_rect)
+        pygame.draw.rect(screen, upgrade_border_color, upgrade_button_rect, 2)
+        
+        upgrade_text = f"Upgrade building ({upgrade_cost}g)" if upgrade_cost else "Upgrade building (MAX)"
+        upgrade_text_color = WHITE if can_afford_upgrade else LIGHT_GRAY
+        upgrade_text_surface = self.small_font.render(upgrade_text, True, upgrade_text_color)
+        screen.blit(upgrade_text_surface, (upgrade_button_x + 10, upgrade_button_y + 12))
+        
+        self.building_upgrade_button = {
+            'rect': upgrade_button_rect,
+            'cost': upgrade_cost,
+            'can_afford': can_afford_upgrade,
+            'building': BUILDING_FIREPLACE
+        }
+        
         y_offset = 80
         text = self.font.render("Cook Food", True, WHITE)
         screen.blit(text, (x + 20, y + y_offset))
@@ -648,20 +927,34 @@ class UIManager:
         ]
         
         self.upgrade_buttons = []
-        menu_width = 600
         for i, (name, cost, food_type) in enumerate(recipes):
+            # Check if button is unlocked (first button always unlocked, others based on upgrade level)
+            is_unlocked = i <= upgrade_level
             button_y = y + y_offset
             button_rect = pygame.Rect(x + 30, button_y, menu_width - 60, 50)
             
-            can_afford = player.gold >= cost
+            can_afford = is_unlocked and player.gold >= cost
             button_color = (80, 120, 80) if can_afford else (80, 80, 80)
             border_color = (100, 200, 100) if can_afford else (100, 100, 100)
             
             pygame.draw.rect(screen, button_color, button_rect)
             pygame.draw.rect(screen, border_color, button_rect, 2)
             
-            food_text = f"{name} - {cost}g"
-            text_color = WHITE if can_afford else LIGHT_GRAY
+            # Draw red cross if locked
+            if not is_unlocked:
+                cross_size = 20
+                cross_x = button_rect.centerx - cross_size // 2
+                cross_y = button_rect.centery - cross_size // 2
+                pygame.draw.line(screen, RED, (cross_x, cross_y), 
+                               (cross_x + cross_size, cross_y + cross_size), 3)
+                pygame.draw.line(screen, RED, (cross_x + cross_size, cross_y), 
+                               (cross_x, cross_y + cross_size), 3)
+            
+            if is_unlocked:
+                food_text = f"{name} - {cost}g"
+            else:
+                food_text = f"{name} - LOCKED"
+            text_color = WHITE if can_afford else (LIGHT_GRAY if is_unlocked else (100, 100, 100))
             text_surface = self.small_font.render(food_text, True, text_color)
             screen.blit(text_surface, (x + 50, button_y + 15))
             
@@ -670,7 +963,8 @@ class UIManager:
                 'name': name,
                 'cost': cost,
                 'food_type': food_type,
-                'can_afford': can_afford
+                'can_afford': can_afford,
+                'is_unlocked': is_unlocked
             })
             
             y_offset += 60
@@ -709,12 +1003,25 @@ class UIManager:
             self.close_menu()
             return True
         
-        # Check upgrade buttons
+        # Check building upgrade button first
+        if hasattr(self, 'building_upgrade_button') and self.building_upgrade_button:
+            if self.building_upgrade_button['rect'].collidepoint(pos):
+                if self.building_upgrade_button.get('can_afford', False):
+                    building = self.building_upgrade_button['building']
+                    cost = self.building_upgrade_button['cost']
+                    if player.gold >= cost:
+                        player.spend_gold(cost)
+                        self.building_upgrades[building] += 1
+                        return True
+        
+        # Check upgrade buttons (only if unlocked)
         if hasattr(self, 'upgrade_buttons') and self.upgrade_buttons:
             for button in self.upgrade_buttons:
-                if button['rect'].collidepoint(pos) and button.get('can_afford', False):
-                    self._purchase_upgrade(button, player)
-                    return True
+                if button['rect'].collidepoint(pos):
+                    # Only allow purchase if unlocked and can afford
+                    if button.get('is_unlocked', True) and button.get('can_afford', False):
+                        self._purchase_upgrade(button, player)
+                        return True
         
         # Check "Sell all resources" button (only in smith menu)
         if self.active_menu == BUILDING_SMITH:
@@ -754,19 +1061,22 @@ class UIManager:
                 player.inventory.add_item(button['food_type'])
     
     def _sell_all_resources(self, player):
-        """Sell all dirt and stone resources"""
+        """Sell all dirt, stone, and copper resources"""
         # Get counts
         dirt_count = player.inventory.get_item_count('dirt')
         stone_count = player.inventory.get_item_count('stone')
+        copper_count = player.inventory.get_item_count('copper')
         
-        # Calculate total gold
-        total_gold = dirt_count * 1 + stone_count * 2
+        # Calculate total gold (dirt: 1g, stone: 2g, copper: 15g)
+        total_gold = dirt_count * 1 + stone_count * 2 + copper_count * 15
         
-        # Remove all dirt and stone
+        # Remove all dirt, stone, and copper
         if dirt_count > 0:
             player.inventory.remove_item('dirt', dirt_count)
         if stone_count > 0:
             player.inventory.remove_item('stone', stone_count)
+        if copper_count > 0:
+            player.inventory.remove_item('copper', copper_count)
         
         # Add gold to player
         if total_gold > 0:
@@ -797,6 +1107,7 @@ class UIManager:
         colors = {
             'stone': GRAY,
             'dirt': (139, 69, 19),
+            'copper': (144, 238, 144),  # Light green
             'wood': (101, 67, 33),
             'sword': (192, 192, 192),
             'wand': (138, 43, 226),
